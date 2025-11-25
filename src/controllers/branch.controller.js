@@ -2,10 +2,26 @@ import Branch from "../models/Branch.model.js";
 import { createBranchSchema } from "../validations/branch.validation.js";
 
 
-// Create new branch
+const getOrgIdFromHeaders = (req, res) => {
+  const organizationId = req.headers["x-organization-id"];
+
+  if (!organizationId) {
+    res.status(400).json({
+      success: false,
+      message: "Organization ID is required in headers",
+    });
+    return { error: true };
+  }
+  return { organizationId };
+};
+
 export const createBranch = async (req, res, next) => {
   try {
-    // Validate input
+    const context = getOrgIdFromHeaders(req, res);
+    if (context.error) return;
+
+    const { organizationId } = context;
+
     const { error } = createBranchSchema.validate(req.body);
     if (error) {
       return res.status(400).json({
@@ -15,7 +31,6 @@ export const createBranch = async (req, res, next) => {
     }
 
     const {
-      organizationId,
       branchName,
       branchCode,
       branchType,
@@ -30,7 +45,6 @@ export const createBranch = async (req, res, next) => {
       status
     } = req.body;
 
-    // Prevent duplicate branch name inside organization
     const existingBranch = await Branch.findOne({
       organizationId,
       branchName,
@@ -43,7 +57,6 @@ export const createBranch = async (req, res, next) => {
       });
     }
 
-    // Create
     const branch = await Branch.create({
       organizationId,
       branchName,
@@ -71,14 +84,14 @@ export const createBranch = async (req, res, next) => {
 };
 
 
-// Get all branches (optional: filter by org)
 export const getBranches = async (req, res, next) => {
   try {
-    const { organizationId } = req.query;
+    const context = getOrgIdFromHeaders(req, res);
+    if (context.error) return;
 
-    const query = organizationId ? { organizationId } : {};
+    const { organizationId } = context;
 
-    const branches = await Branch.find(query).sort({ createdAt: -1 });
+    const branches = await Branch.find({ organizationId }).sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -91,15 +104,22 @@ export const getBranches = async (req, res, next) => {
 };
 
 
-// Get branch by ID
 export const getBranchById = async (req, res, next) => {
   try {
-    const branch = await Branch.findById(req.params.id);
+    const context = getOrgIdFromHeaders(req, res);
+    if (context.error) return;
+
+    const { organizationId } = context;
+
+    const branch = await Branch.findOne({
+      _id: req.params.id,
+      organizationId,
+    });
 
     if (!branch) {
       return res.status(404).json({
         success: false,
-        message: "Branch not found",
+        message: "Branch not found or does not belong to this organization",
       });
     }
 
@@ -110,18 +130,29 @@ export const getBranchById = async (req, res, next) => {
 };
 
 
-// Update branch
 export const updateBranch = async (req, res, next) => {
   try {
-    const branch = await Branch.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    const context = getOrgIdFromHeaders(req, res);
+    if (context.error) return;
+
+    const { organizationId } = context;
+
+    const branch = await Branch.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        organizationId,
+      },
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!branch) {
       return res.status(404).json({
         success: false,
-        message: "Branch not found",
+        message: "Branch not found or does not belong to this organization",
       });
     }
 
@@ -136,15 +167,22 @@ export const updateBranch = async (req, res, next) => {
 };
 
 
-// Delete branch
 export const deleteBranch = async (req, res, next) => {
   try {
-    const branch = await Branch.findByIdAndDelete(req.params.id);
+    const context = getOrgIdFromHeaders(req, res);
+    if (context.error) return;
+
+    const { organizationId } = context;
+
+    const branch = await Branch.findOneAndDelete({
+      _id: req.params.id,
+      organizationId,
+    });
 
     if (!branch) {
       return res.status(404).json({
         success: false,
-        message: "Branch not found",
+        message: "Branch not found or does not belong to this organization",
       });
     }
 

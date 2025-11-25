@@ -3,9 +3,19 @@ const { Schema } = mongoose;
 
 const OrganizationSchema = new Schema(
   {
+    accountId: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+      required: true,
+    },
     name: { type: String, required: true, trim: true },
     slug: { type: String, trim: true, index: true },
-
+    branchIds: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Branch",
+      },
+    ],
     // New fields
     industry: { type: String, default: "" },
     country: { type: String, default: "" },
@@ -17,6 +27,7 @@ const OrganizationSchema = new Schema(
     currency: { type: String, default: "INR" },
     language: { type: String, default: "English" },
     timeZone: { type: String, default: "Asia/Kolkata" },
+    gstNumber: { type: String, default: "" },
 
     // Your existing fields
     contactEmail: { type: String, trim: true, unique: true },

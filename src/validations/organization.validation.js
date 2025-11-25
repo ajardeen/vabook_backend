@@ -1,6 +1,8 @@
 import Joi from "joi";
 
 export const createOrganizationSchema = Joi.object({
+  // Add the required accountId validation here
+  accountId: Joi.string().required(),
   // Basic details
   name: Joi.string().min(2).max(100).required(),
   slug: Joi.string().allow(null, "").optional(),
@@ -17,6 +19,8 @@ export const createOrganizationSchema = Joi.object({
   state: Joi.string().allow("", null).optional(),
   country: Joi.string().allow("", null).optional(),
   zipCode: Joi.string().allow("", null).optional(),
+  location: Joi.string().allow("", null).optional(),
+  gstNumber: Joi.string().allow("", null).optional(),
 
   address: Joi.string().allow("", null).optional(),
 

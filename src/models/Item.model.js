@@ -1,32 +1,38 @@
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
-const ItemSchema = new Schema({
-  organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
-  groupId: { type: Schema.Types.ObjectId, ref: "Group", required: false, index: true }, // if item is group-specific
-  categoryId: { type: Schema.Types.ObjectId, ref: "Category", required: false, index: true },
+const ItemSchema = new Schema(
+  {
+    organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
 
-  sku: { type: String, trim: true, index: true },     // optional SKU / itemCode
-  name: { type: String, required: true, trim: true },
-  description: { type: String, default: "" },
+    branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
 
-  uom: { type: String, default: "unit" }, // unit of measure
-  prepTimeMinutes: { type: Number, default: 0 },
+    categoryId: { type: Schema.Types.ObjectId, ref: "Category", required: true, index: true },
+    categoryName: { type: String, required: true, trim: true },
+    sku: { type: String, trim: true, index: true },
+    name: { type: String, required: true, trim: true },
+    description: { type: String, default: "" },
 
-  price: { type: Number, default: 0 },
-  onlinePrice: { type: Number, default: 0 },
-  parcelPrice: { type: Number, default: 0 },
-  deliveryPrice: { type: Number, default: 0 },
+    uom: { type: String, default: "unit" },
+    prepTimeMinutes: { type: Number, default: 0 },
 
-  tags: [{ type: String }],
-  images: [{ type: String }], // URLs
-  isVegetarian: { type: Boolean, default: false },
-  isActive: { type: Boolean, default: true },
+    price: { type: Number, default: 0 },
+    onlinePrice: { type: Number, default: 0 },
+    parcelPrice: { type: Number, default: 0 },
+    deliveryPrice: { type: Number, default: 0 },
 
-  metadata: { type: Schema.Types.Mixed, default: {} }
-}, { timestamps: true });
+    tags: [{ type: String }],
+    images: [{ type: String ,required: false }],
+    isVegetarian: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
 
-ItemSchema.index({ organizationId: 1, name: "text", sku: 1 });
-ItemSchema.index({ organizationId: 1, sku: 1 }, { unique: false, sparse: true });
+    metadata: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: true }
+);
+
+// Search indexes
+ItemSchema.index({ organizationId: 1, branchId: 1, name: "text" });
+ItemSchema.index({ branchId: 1, sku: 1 }, { unique: false, sparse: true });
 
 export default mongoose.model("Item", ItemSchema);
