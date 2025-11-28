@@ -6,9 +6,16 @@ const BundleMenuRefSchema = new Schema(
   {
     dayIndex: { type: Number, required: true },
     menuId: { type: Schema.Types.ObjectId, ref: "Menu", required: true },
+    items: [
+      {
+        itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
+        qty: { type: Number, required: true, default: 1 },
+      }
+    ]
   },
   { _id: false }
 );
+
 
 // --- Bundle main schema ---
 const BundleSchema = new Schema(
@@ -29,10 +36,28 @@ const BundleSchema = new Schema(
     name: { type: String, required: true, trim: true },
     slug: { type: String, trim: true },
     description: { type: String, default: "" },
-
+    repeatWeeks: { type: Number, default: 0 },
     durationDays: { type: Number, default: 7 },
     basePrice: { type: Number, default: 0 },
     currency: { type: String, default: "INR" },
+    discount: { type: Number, default: 0 },
+    discountType: {
+      type: String,
+      enum: ["fixed", "percentage", "free", "none"],
+      default: "none",
+    },
+    discountDuration: {
+      type: String,
+      enum: ["day", "week", "month", "year", "none"],
+      default: "none",
+    },
+    bundleImage: { type: String, default: "" },
+    bundleCategory: {
+      type: String,
+      enum: ["breakfast", "lunch", "dinner", "snacks"],
+      default: "lunch",
+      required: true,
+    },
 
     bundleType: {
       type: String,
@@ -54,9 +79,6 @@ const BundleSchema = new Schema(
   },
   { timestamps: true }
 );
-
-// --- Validation: ensure unique itemIds and positive maxQty ---
-
 
 BundleSchema.index({ organizationId: 1, branchId: 1, name: 1 });
 

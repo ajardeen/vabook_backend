@@ -7,6 +7,7 @@ export const createBundleSchema = Joi.object({
 
   durationDays: Joi.number().min(1).required(),
   bundleType: Joi.string().valid("weekly", "fixed").default("weekly").required(),
+  repeatWeeks: Joi.number().min(0).default(0),
 
   basePrice: Joi.number().min(0).default(0),
   currency: Joi.string().default("INR"),

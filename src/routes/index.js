@@ -6,6 +6,9 @@ import itemRoutes from "./item.routes.js";
 import menuRoutes from "./menu.routes.js";
 import bundleRoutes from "./bundle.routes.js";
 import authRoutes from "./auth.routes.js";
+import customerRoutes from "./customer.routes.js";
+import orderRoutes from "./order.routes.js";
+import kitchenRoutes from "./kitchen.routes.js";
 
 const router = Router();
 
@@ -20,6 +23,9 @@ router.use("/categories", categoryRoutes);
 router.use("/items", itemRoutes);
 router.use("/menus", menuRoutes);
 router.use("/bundles", bundleRoutes);
+router.use("/customers", customerRoutes);
+router.use("/orders", orderRoutes);
+router.use("/kitchen", kitchenRoutes);
 // import authRoutes from "./auth.routes.js";  
 // you add this
 // router.use("/auth", authRoutes);

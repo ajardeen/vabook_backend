@@ -1,7 +1,7 @@
 import Item from "../models/Item.model.js";
-import Category from "../models/Category.model.js"; 
+import Menu from "../models/Menu.model.js";
+import Category from "../models/Category.model.js";
 import { createItemSchema } from "../validations/item.validation.js";
-
 
 const getIdsFromHeaders = (req, res) => {
   const organizationId = req.headers["x-organization-id"];
@@ -49,6 +49,7 @@ export const createItem = async (req, res, next) => {
       images,
       isVegetarian,
       isActive,
+      nutrition,
     } = req.body;
 
     // Prevent duplicate name inside branch + category
@@ -62,7 +63,8 @@ export const createItem = async (req, res, next) => {
     if (existingItem) {
       return res.status(400).json({
         success: false,
-        message: "Item with this name already exists in this category of the branch",
+        message:
+          "Item with this name already exists in this category of the branch",
       });
     }
 
@@ -76,7 +78,7 @@ export const createItem = async (req, res, next) => {
       organizationId,
       branchId,
       categoryId,
-      categoryName:category?category.name:"",
+      categoryName: category ? category.name : "",
       sku,
       name,
       description,
@@ -90,6 +92,7 @@ export const createItem = async (req, res, next) => {
       images,
       isVegetarian,
       isActive,
+      nutrition,
     });
 
     res.status(201).json({
@@ -101,7 +104,6 @@ export const createItem = async (req, res, next) => {
     next(error);
   }
 };
-
 
 // Get all items
 export const getItems = async (req, res, next) => {
@@ -130,7 +132,6 @@ export const getItems = async (req, res, next) => {
     next(error);
   }
 };
-
 
 // Get single item
 export const getItemById = async (req, res, next) => {
@@ -162,14 +163,30 @@ export const getItemById = async (req, res, next) => {
   }
 };
 
-
 // Update item
 export const updateItem = async (req, res, next) => {
   try {
+    console.log("req=body", req.body);
+
     const context = getIdsFromHeaders(req, res);
     if (context.error) return;
 
     const { organizationId, branchId } = context;
+    // finding item is linked with menu item
+    const itemId = req.params.id;
+    // Check if item linked with any menu
+    const isLinkedWithMenu = await Menu.exists({
+      organizationId,
+      branchId,
+      "items.itemId": itemId,
+    });
+
+    if (isLinkedWithMenu && req.body.isActive === false) {
+      return res.status(400).json({
+        success: false,
+        message: "Item is linked with menu and cannot be deactivated",
+      });
+    }
 
     const item = await Item.findOneAndUpdate(
       {
@@ -198,7 +215,6 @@ export const updateItem = async (req, res, next) => {
   }
 };
 
-
 // Delete item
 export const deleteItem = async (req, res, next) => {
   try {
@@ -206,6 +222,19 @@ export const deleteItem = async (req, res, next) => {
     if (context.error) return;
 
     const { organizationId, branchId } = context;
+      const itemId = req.params.id;
+    // Check if item linked with any menu
+    const isLinkedWithMenu = await Menu.exists({
+      organizationId,
+      branchId,
+      "items.itemId": itemId,
+    });
+    if (isLinkedWithMenu){
+      return res.status(405).json({
+        success:false,
+        message:"Item is linked with menu and cannot be deleted",
+      })
+    }
 
     const item = await Item.findOneAndDelete({
       _id: req.params.id,

@@ -37,6 +37,7 @@ export const createBundle = async (req, res, next) => {
       durationDays,
       basePrice,
       currency,
+      repeatWeeks,
       menus,
       isPublished,
       status,
@@ -62,6 +63,7 @@ export const createBundle = async (req, res, next) => {
       slug,
       description,
       durationDays,
+      repeatWeeks,
       basePrice,
       currency,
       menus,
@@ -131,16 +133,66 @@ export const getPublishedBundles = async (req, res, next) => {
       })
       .sort({ createdAt: -1 });
 
-    res.json({
+    const formattedBundles = bundles.map((bundle) => ({
+      id: bundle._id,
+      name: bundle.name,
+      description: bundle.description || "",
+      category: "veg" || "mix",
+      price: bundle.basePrice || 0,
+      bundleType:bundle.bundleType || "",
+      bundleImage: bundle.metadata?.image || "", // optional later
+      days: bundle.menus.map((m) => {
+        const menu = m.menuId;
+        const items = menu.items.map((itm) => {
+          const bundleItem = m.items?.find(
+            (bi) => bi.itemId.toString() === itm.itemId._id.toString()
+          );
+          return {
+            itemName: itm.itemName || "",
+            quantity: bundleItem ? bundleItem.qty : itm.qty || 0,
+            uom: itm.itemId?.uom || "",
+            category: itm.itemId?.isVegetarian ? "veg" : "non-veg",
+            description: itm.itemId?.description || "",
+            imageUrl: itm.itemId?.images || "",
+            nutrition: itm.itemId?.nutrition || {
+              calories: 0,
+              protein: 0,
+              carbs: 0,
+              fat: 0,
+            },
+          };
+        });
+
+        // Calculate daily total nutrition
+        const totalNutrition = items.reduce(
+          (acc, item) => {
+            acc.calories += item.nutrition.calories || 0;
+            acc.protein += item.nutrition.protein || 0;
+            acc.carbs += item.nutrition.carbs || 0;
+            acc.fat += item.nutrition.fat || 0;
+            return acc;
+          },
+          { calories: 0, protein: 0, carbs: 0, fat: 0 }
+        );
+
+        return {
+          day: menu.dayOfWeek || "",
+          menuName: menu.name || "",
+          items,
+          totalNutrition,
+        };
+      }),
+    }));
+
+    return res.json({
       success: true,
-      count: bundles.length,
-      data: bundles,
+      count: formattedBundles.length,
+      data: { bundles: formattedBundles },
     });
   } catch (error) {
     next(error);
   }
 };
-
 
 export const getBundleById = async (req, res, next) => {
   try {

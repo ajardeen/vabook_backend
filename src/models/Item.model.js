@@ -3,13 +3,28 @@ const { Schema } = mongoose;
 
 const ItemSchema = new Schema(
   {
-    organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: "Organization",
+      required: true,
+      index: true,
+    },
+    branchId: {
+      type: Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
 
-    branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
-
-    categoryId: { type: Schema.Types.ObjectId, ref: "Category", required: true, index: true },
+    categoryId: {
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+      required: true,
+      index: true,
+    },
     categoryName: { type: String, required: true, trim: true },
-    sku: { type: String, trim: true, index: true },
+
+    sku: { type: String, trim: true, index: true,unique: true},
     name: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
 
@@ -22,9 +37,17 @@ const ItemSchema = new Schema(
     deliveryPrice: { type: Number, default: 0 },
 
     tags: [{ type: String }],
-    images: [{ type: String ,required: false }],
+    images: { type: String, default: "" },
+
     isVegetarian: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
+
+    nutrition: {
+      calories: { type: Number, default: 0 },
+      protein: { type: Number, default: 0 },
+      carbs: { type: Number, default: 0 },
+      fat: { type: Number, default: 0 },
+    },
 
     metadata: { type: Schema.Types.Mixed, default: {} },
   },
