@@ -14,6 +14,27 @@ const StatusHistorySchema = new Schema(
   { _id: false }
 );
 
+// Track each menu inside bundle
+const MenuStatusSchema = new Schema(
+  {
+    menuId: { type: Schema.Types.ObjectId, ref: "Menu", required: true },
+    menuName: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["pending", "cooking", "ready", "completed", "cancelled"],
+      default: "pending",
+    },
+    items: [
+      {
+        itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
+        qty: Number,
+        itemName: String
+      }
+    ]
+  },
+  { _id: false }
+);
+
 const OrderSchema = new Schema(
   {
     orderNumber: { type: String, unique: true },
@@ -35,11 +56,15 @@ const OrderSchema = new Schema(
       default: "pending",
     },
 
+    // Main order level status
     status: {
       type: String,
       enum: ["placed", "processing", "ready", "out_for_delivery", "delivered", "cancelled"],
       default: "placed",
     },
+
+    // 🔥 Menu level kitchen tracking for customer & kitchen
+    menusStatus: { type: [MenuStatusSchema], default: [] },
 
     statusHistory: { type: [StatusHistorySchema], default: [] },
   },

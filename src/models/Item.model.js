@@ -29,7 +29,7 @@ const ItemSchema = new Schema(
     description: { type: String, default: "" },
 
     uom: { type: String, default: "unit" },
-    prepTimeMinutes: { type: Number, default: 0 },
+    prepTimeMinutes: { type: Number, default: 0,required:true },
 
     price: { type: Number, default: 0 },
     onlinePrice: { type: Number, default: 0 },

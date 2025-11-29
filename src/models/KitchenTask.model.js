@@ -22,10 +22,6 @@ const KitchenTaskSchema = new Schema(
       required: true,
       index: true,
     },
-    cycleId: {
-      type: Schema.Types.ObjectId,
-      required: true,
-    },
 
     // Display data to kitchen
     customerName: { type: String, required: true },
@@ -36,9 +32,12 @@ const KitchenTaskSchema = new Schema(
       {
         itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
         qty: { type: Number, required: true },
-        itemName: { type: String, required: true }
-      }
+        itemName: { type: String, required: true },
+        prepTimeMinutes: { type: Number, required: true }, // NEW
+      },
     ],
+
+    totalPrepTime: { type: Number, default: 0 }, // NEW (sum of all item prep times)
 
     // Kitchen status flow
     status: {

@@ -3,14 +3,18 @@ import {
   createOrder,
   getOrders,
   getOrderById,
-  updateCycleStatus
+  updateCycleStatus,
+  getOrdersByOrgAndBranch,
+  approveOrder,
 } from "../controllers/order.controller.js";
 
 const router = Router();
 
 router.post("/", createOrder);
 router.get("/", getOrders);
+router.get("/by-org-branch", getOrdersByOrgAndBranch);
 router.get("/:id", getOrderById);
 router.patch("/:orderId/cycle/:cycleId/status", updateCycleStatus);
+router.put("/approve/:orderId", approveOrder);
 
 export default router;
