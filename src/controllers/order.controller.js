@@ -106,6 +106,36 @@ export const getOrdersByOrgAndBranch = async (req, res, next) => {
   }
 };
 
+// Get order bu customer id
+export const getOrdersByCustomerId = async (req, res, next) => {
+  try {
+    const { customerId } = req.params;
+    if (!customerId)
+      return res
+        .status(400)
+        .json({ success: false, message: "Customer ID is required" });
+
+    const context = getIdsFromHeaders(req, res);
+    if (context.error) return;
+
+    const { organizationId, branchId } = context;
+    const orders = await Order.find({ organizationId, branchId, customerId });
+    if (!orders) {
+      return res.status(404).json({
+        success: false,
+        message: "No orders found for this customer",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      data: orders,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get Order Details by ID
 export const getOrderById = async (req, res, next) => {
   try {

@@ -70,5 +70,17 @@ const OrderSchema = new Schema(
   },
   { timestamps: true }
 );
+OrderSchema.virtual("orderSteps").get(function () {
+  return this.statusHistory.map((entry, index) => ({
+    id: index + 1,
+    title: entry.status.replace(/_/g, " ").toUpperCase(),  // "out_for_delivery" -> "OUT FOR DELIVERY"
+    subtitle: entry.note || "",
+    time: entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "",
+    completed: index < this.statusHistory.length - 1
+  }));
+});
+OrderSchema.set("toJSON", { virtuals: true });
+OrderSchema.set("toObject", { virtuals: true });
+
 
 export default mongoose.model("Order", OrderSchema);
