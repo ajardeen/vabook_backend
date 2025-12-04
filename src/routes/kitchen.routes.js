@@ -10,6 +10,6 @@ const router = Router();
 router.get("/", getKitchenTasks);
 
 // Update Kitchen Task Status
-router.patch("/:taskId/status", updateKitchenStatus);
+router.put("/status/:taskId", updateKitchenStatus);
 
 export default router;

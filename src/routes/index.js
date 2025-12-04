@@ -9,6 +9,7 @@ import authRoutes from "./auth.routes.js";
 import customerRoutes from "./customer.routes.js";
 import orderRoutes from "./order.routes.js";
 import kitchenRoutes from "./kitchen.routes.js";
+import staffRoutes from "./staff.routes.js";
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.use("/bundles", bundleRoutes);
 router.use("/customers", customerRoutes);
 router.use("/orders", orderRoutes);
 router.use("/kitchen", kitchenRoutes);
+router.use("/staff", staffRoutes)
 // import authRoutes from "./auth.routes.js";  
 // you add this
 // router.use("/auth", authRoutes);

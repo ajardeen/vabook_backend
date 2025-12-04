@@ -12,6 +12,7 @@ const AccountSchema = new Schema(
 
     password: { type: String, required: true },
 
+
     // Account starts with no organization
     organizationId: {
       type: Schema.Types.ObjectId,
@@ -21,8 +22,8 @@ const AccountSchema = new Schema(
 
     role: {
       type: String,
-      enum: ["admin", "staff","chief"],
-      default: "staff",
+      enum: ["admin"],
+      default: "admin",
     },
 
     status: {

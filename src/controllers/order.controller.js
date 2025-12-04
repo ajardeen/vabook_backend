@@ -5,6 +5,8 @@ import {
 import KitchenTask from "../models/KitchenTask.model.js";
 import Bundle from "../models/Bundle.model.js";
 import Order from "../models/Order.model.js";
+import Customer from "../models/Customer.model.js";
+import dayjs from "dayjs";
 // Generate Unique Order Number
 const generateOrderNumber = () => "ORD-" + Date.now();
 
@@ -24,6 +26,8 @@ const getIdsFromHeaders = (req, res) => {
 
 // Create Order
 export const createOrder = async (req, res, next) => {
+ 
+  
   try {
     const context = getIdsFromHeaders(req, res);
     if (context.error) return;
@@ -40,19 +44,99 @@ export const createOrder = async (req, res, next) => {
     const generateOrderNumber = () =>
       "ORD-" + Date.now() + "-" + Math.floor(Math.random() * 9999);
 
-    const ordersToCreate = orderList.map((o) => ({
-      orderNumber: generateOrderNumber(),
-      customerId: o.customerId,
-      organizationId,
-      branchId,
-      bundleId: o.bundleId,
-      bundleName: o.bundleName,
-      price: o.price,
-      quantity: o.quantity,
-      totalPrice: o.price * o.quantity,
-      paymentStatus: "pending",
-      statusHistory: [{ status: "placed" }],
-    }));
+    console.log("received order", req.body);
+
+    const ordersToCreate = [];
+
+    for (const o of orderList) {
+      if (!o.deliveryAddressId) {
+        return res.status(400).json({
+          success: false,
+          message: "deliveryAddressId is required for each order item",
+        });
+      }
+
+      // 1) Load customer with delivery addresses
+      const customer = await Customer.findById(o.customerId).select(
+        "deliveryAddress"
+      );
+
+      if (!customer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer not found",
+        });
+      }
+
+      // 2) Find specific address subdocument by id
+      const address = customer.deliveryAddress.id(o.deliveryAddressId);
+
+      if (!address) {
+        return res.status(404).json({
+          success: false,
+          message: "Delivery address not found for given deliveryAddressId",
+        });
+      }
+
+      // 3) Format delivery address string
+      const formattedAddress = [
+        address.label,
+        address.street1,
+        address.street2,
+        address.city,
+        address.state,
+        address.pinCode,
+        address.country,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      // 4) Build delivery payload
+      const deliveryPayload = {
+        deliveryAddress: formattedAddress,
+        deliveryLocation:
+          address.latitude != null && address.longitude != null
+            ? {
+                lat: address.latitude,
+                lng: address.longitude,
+              }
+            : null,
+        // you can tweak this time as per your logic
+        expectedDeliveryTime: new Date(Date.now() + 45 * 60 * 1000),
+      };
+
+      ordersToCreate.push({
+        orderNumber: generateOrderNumber(),
+        customerId: o.customerId,
+        organizationId,
+        branchId,
+        bundleId: o.bundleId,
+        bundleName: o.bundleName,
+        price: o.price,
+        quantity: o.quantity,
+        totalPrice: o.price * o.quantity,
+
+        // Payment
+        paymentStatus: "pending",
+        paymentMethod: o.paymentMethod || "gpay",
+
+        // Main status
+        status: "placed",
+        deliveryStartDate: new Date(),
+
+        // Delivery object
+        delivery: deliveryPayload,
+
+        statusHistory: [
+          {
+            status: "placed",
+            note: `Order placed via app. Payment method: ${
+              o.paymentMethod || "gpay"
+            }`,
+          },
+        ],
+      });
+    }
 
     const createdOrders = await Order.insertMany(ordersToCreate);
 
@@ -63,9 +147,12 @@ export const createOrder = async (req, res, next) => {
       data: createdOrders,
     });
   } catch (error) {
+    console.log("error",error.message);
+    
     next(error);
   }
 };
+
 
 // Get Orders
 export const getOrders = async (req, res, next) => {
@@ -166,6 +253,14 @@ export const approveOrder = async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Order not found" });
 
+    if (!order.deliveryStartDate) {
+      order.deliveryStartDate = new Date(); // ⭐ Start from today
+      order.statusHistory.push({
+        status: "processing",
+        note: "Delivery started",
+      });
+    }
+
     const bundle = await Bundle.findById(order.bundleId)
       .populate("menus.menuId")
       .populate("menus.items.itemId");
@@ -174,39 +269,59 @@ export const approveOrder = async (req, res, next) => {
       return res
         .status(404)
         .json({ success: false, message: "Bundle not found" });
+
     let menusStatus = [];
+    const cycleCount = bundle.bundleType === "weekly" ? bundle.repeatWeeks : 1;
 
-    for (const m of bundle.menus) {
-      const mappedItems = m.items.map((i) => ({
-        itemId: i.itemId._id,
-        qty: i.qty,
-        itemName: i.itemId.name,
-        prepTimeMinutes: i.itemId.prepTimeMinutes || 20,
-      }));
-      const totalPrepTime = mappedItems.reduce(
-        (acc, it) => acc + it.prepTimeMinutes * it.qty,
-        0
-      );
+    for (let cycle = 0; cycle < cycleCount; cycle++) {
+      for (const m of bundle.menus) {
+        const mappedItems = m.items.map((i) => ({
+          itemId: i.itemId._id,
+          qty: i.qty,
+          itemName: i.itemId.name,
+          prepTimeMinutes: i.itemId.prepTimeMinutes || 20,
+        }));
 
-      await KitchenTask.create({
-        organizationId: order.organizationId,
-        branchId: order.branchId,
-        orderId: order._id,
-        customerName: order.customerId?.name || "Customer",
-        bundleName: order.bundleName,
-        deliveryDate: new Date(),
-        menuId: m.menuId._id,
-        items: mappedItems,
-        totalPrepTime,
-      });
+        const totalPrepTime = mappedItems.reduce(
+          (acc, it) => acc + it.prepTimeMinutes * it.qty,
+          0
+        );
+        let scheduledDaysPassed;
 
-      menusStatus.push({
-        menuId: m.menuId._id,
-        menuName: m.menuId.name,
-        status: "pending",
-        items: mappedItems,
-        totalPrepTime,
-      });
+        if (bundle.bundleType === "weekly") {
+          scheduledDaysPassed = cycle * 7 + m.dayIndex;
+        } else {
+          scheduledDaysPassed = m.dayIndex;
+        }
+
+        const deliveryDate = dayjs(order.deliveryStartDate)
+          .add(scheduledDaysPassed, "day")
+          .toDate();
+
+        await KitchenTask.create({
+          organizationId: order.organizationId,
+          branchId: order.branchId,
+          orderId: order._id,
+          customerName: order.customerId?.name || "Customer",
+          bundleName: order.bundleName,
+          deliveryDate: deliveryDate,
+          menuId: m.menuId._id,
+          items: mappedItems,
+          totalPrepTime,
+          cycleIndex: cycle, // ⭐ optional tracking (Week number)
+          dayIndex: m.dayIndex, // ⭐ exact day inside the week
+        });
+
+        menusStatus.push({
+          menuId: m.menuId._id,
+          menuName: m.menuId.name,
+          status: "pending",
+          items: mappedItems,
+          totalPrepTime,
+          cycleIndex: cycle,
+          dayIndex: m.dayIndex,
+        });
+      }
     }
 
     order.menusStatus = menusStatus;

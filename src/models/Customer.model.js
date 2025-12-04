@@ -10,9 +10,10 @@ const AddressSchema = new Schema(
     city: { type: String, required: true, trim: true },
     state: { type: String, required: true, trim: true },
     country: { type: String, required: true, trim: true },
-    zipCode: { type: String, required: true, trim: true },
+    pinCode: { type: String, required: true, trim: true },
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
+     deliveryNotes: { type: String, default: "" }, 
     isDefault: { type: Boolean, default: false }, // To mark a default address
   },
   { _id: true } // Mongoose automatically adds _id to subdocuments by default, but explicitly stating it for clarity
@@ -44,6 +45,7 @@ const CustomerSchema = new Schema(
       index: true,
     },
     deliveryAddress: { type: [AddressSchema], default: [] },
+    
 
     otpCode: { type: String }, // used for forgot password
     otpExpireAt: { type: Date },

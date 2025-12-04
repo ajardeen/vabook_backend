@@ -1,7 +1,7 @@
 import Account from "../models/Account.model.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/jwt.js";
-
+import StaffAccountModel from "../models/StaffAccount.model.js";
 
 // SIGNUP
 export const signup = async (req, res, next) => {
@@ -11,7 +11,9 @@ export const signup = async (req, res, next) => {
     // Check if email exists
     const existing = await Account.findOne({ email });
     if (existing) {
-      return res.status(400).json({ success: false, message: "Email already in use" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email already in use" });
     }
 
     // Create account
@@ -26,38 +28,91 @@ export const signup = async (req, res, next) => {
   }
 };
 
-
 // LOGIN
 export const login = async (req, res, next) => {
   try {
-    const { email, password,role } = req.body;
+    const { email, password, role } = req.body;
 
-    const account = await Account.findOne({ email });
+    let user;
 
-    if (!account) {
+    // ADMIN
+    if (role === "admin") {
+      user = await Account.findOne({ email });
+    }
+    // STAFF / CHEF / RIDER
+    else {
+      user = await StaffAccountModel
+        .findOne({ email, role })
+        .populate("organizationId branchId");
+    }
+
+    if (!user)
       return res.status(400).json({ success: false, message: "Invalid email or password" });
-    }
 
-    const isMatch = await bcrypt.compare(password, account.password);
-
-    if (!isMatch) {
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch)
       return res.status(400).json({ success: false, message: "Invalid email or password" });
-    }
 
-    if(account.role!==role){
-      return res.status(400).json({ success: false, message: "Invalid role for this account" });
-    }
+    if (user.role !== role)
+      return res.status(400).json({ success: false, message: "Unauthorized role" });
+
+    // 🔥 Prepare account response exactly for AuthContext
+    const accountPayload = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      organizationId: user.organizationId?._id || null,
+      branchId: user.branchId?._id || null,
+    };
 
     res.json({
       success: true,
       message: "Login successful",
       data: {
-        account,
-        token: generateToken(account)
-      }
+        token: generateToken(user),
+        account: accountPayload,
+      },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
     next(error);
   }
 };
+
+// try {
+//     const { email, password, role } = req.body;
+
+//     const account = await Account.findOne({ email });
+
+//     if (!account) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid email or password" });
+//     }
+
+//     const isMatch = await bcrypt.compare(password, account.password);
+
+//     if (!isMatch) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid email or password" });
+//     }
+
+//     if (account.role !== role) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid role for this account" });
+//     }
+
+//     res.json({
+//       success: true,
+//       message: "Login successful",
+//       data: {
+//         account,
+//         token: generateToken(account),
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//     next(error);
+//   }

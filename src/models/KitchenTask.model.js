@@ -28,18 +28,21 @@ const KitchenTaskSchema = new Schema(
     bundleName: { type: String, required: true },
     deliveryDate: { type: Date, required: true },
     menuId: { type: Schema.Types.ObjectId, ref: "Menu", required: true },
+
+    cycleIndex: { type: Number, default: 0 },  // ⭐ NEW (week number)
+    dayIndex: { type: Number, default: 0 },    // ⭐ NEW (day number)
+
     items: [
       {
         itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
         qty: { type: Number, required: true },
         itemName: { type: String, required: true },
-        prepTimeMinutes: { type: Number, required: true }, // NEW
+        prepTimeMinutes: { type: Number, required: true },
       },
     ],
 
-    totalPrepTime: { type: Number, default: 0 }, // NEW (sum of all item prep times)
+    totalPrepTime: { type: Number, default: 0 },
 
-    // Kitchen status flow
     status: {
       type: String,
       enum: ["pending", "cooking", "ready", "completed", "cancelled"],

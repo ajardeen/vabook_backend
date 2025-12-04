@@ -30,6 +30,7 @@ export const registerCustomer = async (req, res, next) => {
       return res
         .status(400)
         .json({ success: false, message: error.details[0].message });
+
     const context = getIdsFromHeaders(req, res);
 
     if (context.error) return;
@@ -121,7 +122,7 @@ export const loginCustomer = async (req, res, next) => {
       success: true,
       message: "Login successful",
       token,
-      customer:structuredCustomer,
+      customer: structuredCustomer,
     });
   } catch (err) {
     next(err);
@@ -164,6 +165,261 @@ export const forgotPassword = async (req, res, next) => {
       message: "OTP sent to email (next step: verify and reset)",
       otp, // (for now show otp, later integrate email)
       customerId: customer._id,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// UPDATE CUSTOMER ACCOUNT
+// export const updateCustomerAccount = async (req, res, next) => {
+//   try {
+//     const { customerId } = req.params;
+//     const context = getIdsFromHeaders(req, res);
+//     if (context.error) return;
+
+//     const { organizationId, branchId } = context;
+//     const { fullName, phone, email, deliveryAddress } = req.body;
+
+//     const customer = await Customer.findOne({ _id: customerId, organizationId, branchId });
+//     if (!customer)
+//       return res.status(404).json({ success: false, message: "Customer not found" });
+
+//     if (email && email !== customer.email) {
+//       const exists = await Customer.findOne({ email, organizationId });
+//       if (exists)
+//         return res.status(400).json({ success: false, message: "Email already exists" });
+//       customer.email = email;
+//     }
+
+//     if (fullName) customer.fullName = fullName;
+//     if (phone) customer.phone = phone;
+
+//     if (Array.isArray(deliveryAddress)) {
+//       // Only one default address allowed
+//       const hasDefault = deliveryAddress.some(a => a.isDefault);
+//       if (hasDefault) {
+//         deliveryAddress.forEach(a => (a.isDefault = false));
+//         deliveryAddress[0].isDefault = true;
+//       }
+//       customer.deliveryAddress = deliveryAddress;
+//     }
+
+//     await customer.save();
+
+//     res.json({
+//       success: true,
+//       customer,
+//       message: "Account updated successfully",
+//     });
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+
+// export const updateCustomerPassword = async (req, res, next) => {
+//   try {
+//     const { customerId } = req.params;
+//     const { oldPassword, newPassword } = req.body;
+
+//     const customer = await Customer.findById(customerId);
+//     if (!customer)
+//       return res.status(404).json({ success: false, message: "Customer not found" });
+
+//     const valid = await bcrypt.compare(oldPassword, customer.password);
+//     if (!valid)
+//       return res.status(400).json({ success: false, message: "Old password is incorrect" });
+
+//     customer.password = await bcrypt.hash(newPassword, 10);
+//     await customer.save();
+
+//     res.json({ success: true, message: "Password changed successfully" });
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+
+// getting customer details by customer id
+
+export const getCustomerById = async (req, res, next) => {
+  try {
+    const { customerId } = req.params;
+    const context = getIdsFromHeaders(req, res);
+    if (context.error) return;
+
+    const customer = await Customer.findOne({
+      _id: customerId,
+      organizationId: context.organizationId,
+      branchId: context.branchId,
+    });
+
+    if (!customer)
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+
+    res.json({
+      success: true,
+      customer,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const addCustomerAddress = async (req, res, next) => {
+  try {
+    const { customerId } = req.params;
+
+    const context = getIdsFromHeaders(req, res);
+    if (context.error) return;
+
+    const customer = await Customer.findOne({
+      _id: customerId,
+      organizationId: context.organizationId,
+      branchId: context.branchId,
+    });
+
+    if (!customer)
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+
+    const newAddress = req.body;
+
+    // If new address has isDefault = true, then remove default from others.
+    if (newAddress.isDefault) {
+      customer.deliveryAddress.forEach((a) => (a.isDefault = false));
+    }
+
+    customer.deliveryAddress.push(newAddress);
+    await customer.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Address added successfully",
+      deliveryAddress: customer.deliveryAddress,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+export const getCustomerAddressById = async (req, res, next) => {
+  try {
+    const { customerId, addressId } = req.params;
+    const context = getIdsFromHeaders(req, res);
+    if (context.error) return;
+
+    const customer = await Customer.findOne({
+      _id: customerId,
+      organizationId: context.organizationId,
+      branchId: context.branchId,
+    });
+
+    if (!customer)
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+
+    const address = customer.deliveryAddress.id(addressId);
+    if (!address)
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
+
+    return res.json({
+      success: true,
+      address,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+export const editCustomerAddress = async (req, res, next) => {
+  try {
+    const { customerId, addressId } = req.params;
+    const context = getIdsFromHeaders(req, res);
+    if (context.error) return;
+
+    const customer = await Customer.findOne({
+      _id: customerId,
+      organizationId: context.organizationId,
+      branchId: context.branchId,
+    });
+
+    if (!customer)
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+
+    const updateData = req.body;
+
+    // If edited address isDefault → make others false
+    if (updateData.isDefault) {
+      customer.deliveryAddress.forEach((a) => (a.isDefault = false));
+    }
+
+    const index = customer.deliveryAddress.findIndex(
+      (a) => a._id.toString() === addressId
+    );
+    if (index === -1)
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
+
+    customer.deliveryAddress[index] = {
+      ...customer.deliveryAddress[index],
+      ...updateData,
+    };
+
+    await customer.save();
+
+    return res.json({
+      success: true,
+      message: "Address updated successfully",
+      deliveryAddress: customer.deliveryAddress,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+export const deleteCustomerAddress = async (req, res, next) => {
+  try {
+    const { customerId, addressId } = req.params;
+    const context = getIdsFromHeaders(req, res);
+    if (context.error) return;
+
+    const customer = await Customer.findOne({
+      _id: customerId,
+      organizationId: context.organizationId,
+      branchId: context.branchId,
+    });
+
+    if (!customer)
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+
+    const address = customer.deliveryAddress.id(addressId);
+    if (!address)
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
+
+    address.deleteOne(); // remove from array
+    if (
+      !customer.deliveryAddress.some((a) => a.isDefault) &&
+      customer.deliveryAddress.length > 0
+    ) {
+      customer.deliveryAddress[0].isDefault = true;
+    }
+
+    await customer.save();
+
+    return res.json({
+      success: true,
+      message: "Address deleted successfully",
+      deliveryAddress: customer.deliveryAddress,
     });
   } catch (err) {
     next(err);
