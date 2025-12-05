@@ -7,18 +7,13 @@ import {
   getOrdersByOrgAndBranch,
   approveOrder,
   getOrdersByCustomerId,
-} from "../controllers/order.controller.js";
-import {
-  assignRider,
-  updateDeliveryLocation,
+  getRiderJobsForToday,
   updateDeliveryStatus,
-} from "../controllers/delivery.controller.js";
+  getRiderOrderDetail,
+} from "../controllers/order.controller.js";
 
 const router = Router();
-// // delivery routes (still under /orders)
-// router.patch("/:orderId/delivery/assign", assignRider);
-// router.patch("/:orderId/delivery/status", updateDeliveryStatus);
-// router.patch("/:orderId/delivery/location", updateDeliveryLocation);
+
 
 router.post("/", createOrder);
 router.get("/", getOrders);
@@ -28,5 +23,7 @@ router.get("/customer/:customerId", getOrdersByCustomerId);
 router.patch("/:orderId/cycle/:cycleId/status", updateCycleStatus);
 router.put("/approve/:orderId", approveOrder);
 
-
+router.get("/rider/jobs", getRiderJobsForToday);
+router.get("/rider/task/:taskId", getRiderOrderDetail);
+router.post("/:taskId/rider/job/update",updateDeliveryStatus)
 export default router;
