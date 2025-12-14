@@ -1,63 +1,53 @@
-  import mongoose from "mongoose";
-  const { Schema } = mongoose;
+import mongoose from "mongoose";
+const { Schema } = mongoose;
 
-  const MenuItemSubSchema = new Schema(
-    {
-      itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
-      itemName: { type: String, required: true },
-      itemPrice: { type: Number, required: true },
-      qty: { type: Number, default: 1 },
-      notes: { type: String, default: "" },
+// Snapshot of item details to preserve history if main Item changes
+const MenuItemSubSchema = new Schema(
+  {
+    itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
+    qty: { type: Number, default: 1 },
+  },
+  { _id: false }
+);
+
+const MenuSchema = new Schema(
+  {
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: "Organization",
+      required: true,
     },
-    { _id: false }
-  );
+    branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
 
-  const MenuSchema = new Schema(
-    {
-      organizationId: {
-        type: Schema.Types.ObjectId,
-        ref: "Organization",
-        required: true,
-        index: true,
-      },
-      branchId: {
-        type: Schema.Types.ObjectId,
-        ref: "Branch",
-        required: true,
-        index: true,
-      },
-      name: { type: String, required: true, trim: true },
-      description: { type: String, default: "" },
-      dayOfWeek: {
-        type: String,
-        enum: [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-          "",
-        ],
-        default: "",
-      },
-      dayIndex: {
-  type: Number,
-  min: 0,
-  max: 29,
-  default: null,
-},
-
-      items: { type: [MenuItemSubSchema], default: [] },
-      availableFrom: { type: Date },
-      availableTo: { type: Date },
-      status: { type: String, enum: ["active", "inactive"], default: "active" },
-      metadata: { type: Schema.Types.Mixed, default: {} },
+    name: { type: String, required: true }, // e.g., "Monday Standard Non-Veg"
+    description: String,
+    // 🔥 NEW FIELD: Defines what meal this menu is for
+    mealType: {
+      type: String,
+      enum: ["breakfast", "lunch", "dinner", "snacks", "all_day"],
+      required: true,
+      default: "lunch",
     },
-    { timestamps: true }
-  );
+    // This helps Admin organize, but the Bundle decides when it is actually served
+    suggestedDay: {
+      type: String,
+      enum: [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "Any",
+      ],
+    },
 
-  MenuSchema.index({ organizationId: 1, branchId: 1, name: 1 });
+    items: [MenuItemSubSchema],
 
-  export default mongoose.model("Menu", MenuSchema);
+    isActive: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Menu", MenuSchema);

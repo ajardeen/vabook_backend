@@ -1,31 +1,60 @@
 import Joi from "joi";
 
+export const menuItemSchema = Joi.object({
+  itemId: Joi.string().required(),
+  name: Joi.string().required(),
+  qty: Joi.number().min(1).default(1),
+  isVegetarian: Joi.boolean().default(false),
+});
+
 export const createMenuSchema = Joi.object({
-
-
   name: Joi.string().min(2).max(150).required(),
+  description: Joi.string().allow("", null),
+
+  mealType: Joi.string()
+    .valid("breakfast", "lunch", "dinner", "snacks", "all_day")
+    .required(),
+
+  suggestedDay: Joi.string()
+    .valid(
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+      "Any"
+    )
+    .optional(),
+
+  items: Joi.array().items(menuItemSchema).min(1).required(),
+
+  isActive: Joi.boolean().default(true),
+});
+
+export const updateMenuSchema = Joi.object({
+  name: Joi.string().min(2).max(150).optional(),
   description: Joi.string().allow("", null).optional(),
 
-  dayOfWeek: Joi.string().valid(
-    "Monday", "Tuesday", "Wednesday",
-    "Thursday", "Friday", "Saturday", "Sunday", ""
-  ).optional(),
+  mealType: Joi.string()
+    .valid("breakfast", "lunch", "dinner", "snacks", "all_day")
+    .optional(),
 
-  dayIndex: Joi.number().min(0).allow(null).optional(),
+  suggestedDay: Joi.string()
+    .valid(
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+      "Any"
+    )
+    .optional(),
 
-  items: Joi.array().items(
-    Joi.object({
-      itemId: Joi.string().required(),
-      itemName: Joi.string().required(),
-      itemPrice: Joi.number().min(0).required(),
-      qty: Joi.number().min(1).default(1),
-      notes: Joi.string().allow("", null),
-      priceOverride: Joi.number().allow(null),
-    })
-  ).default([]),
+  items: Joi.array().items(menuItemSchema).min(1).optional(),
 
-  availableFrom: Joi.date().optional(),
-  availableTo: Joi.date().optional(),
-
-  status: Joi.string().valid("active", "inactive").default("active"),
+  isActive: Joi.boolean().optional(),
 });

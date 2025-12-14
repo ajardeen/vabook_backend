@@ -23,16 +23,15 @@ export const createItem = async (req, res, next) => {
     const context = getIdsFromHeaders(req, res);
     if (context.error) return;
 
-    const { organizationId, branchId } = context;
+    const { organizationId, branchId } = context; // Validate
 
-    // Validate
     const { error } = createItemSchema.validate(req.body);
     if (error) {
       return res.status(400).json({
         success: false,
         message: error.details[0].message,
       });
-    }
+    } // --- START: Schema Alignment Updates --- // Removed old pricing fields and 'categoryName', added 'pricing'
 
     const {
       categoryId,
@@ -41,18 +40,12 @@ export const createItem = async (req, res, next) => {
       description,
       uom,
       prepTimeMinutes,
-      price,
-      onlinePrice,
-      parcelPrice,
-      deliveryPrice,
-      tags,
-      images,
+      pricing, // NEW: Expecting the array of pricing tiers
+      image, // Assuming 'image' maps to the single URL field
       isVegetarian,
       isActive,
-      nutrition,
-    } = req.body;
-
-    // Prevent duplicate name inside branch + category
+      nutrition, // NOTE: Removed redundant fields from body: price, onlinePrice, parcelPrice, deliveryPrice, tags, images (now 'image')
+    } = req.body; // --- END: Schema Alignment Updates --- // Prevent duplicate name inside branch + category
     const existingItem = await Item.findOne({
       organizationId,
       branchId,
@@ -66,30 +59,19 @@ export const createItem = async (req, res, next) => {
         message:
           "Item with this name already exists in this category of the branch",
       });
-    }
-
-    const category = await Category.findOne({
-      _id: categoryId,
-      organizationId,
-      branchId,
-    });
+    } // --- START: Data Redundancy Removal --- // Removed Category lookup as 'categoryName' is no longer stored in Item schema. // const category = await Category.findOne({ ... }); // --- END: Data Redundancy Removal ---
 
     const item = await Item.create({
       organizationId,
       branchId,
-      categoryId,
-      categoryName: category ? category.name : "",
+      categoryId, // Removed categoryName: category ? category.name : "",
       sku,
       name,
       description,
       uom,
       prepTimeMinutes,
-      price,
-      onlinePrice,
-      parcelPrice,
-      deliveryPrice,
-      tags,
-      images,
+      pricing, // NEW: Using the consolidated pricing array // Removed old price fields (price, onlinePrice, parcelPrice, deliveryPrice)
+      image, // Using the single image field
       isVegetarian,
       isActive,
       nutrition,
@@ -121,12 +103,20 @@ export const getItems = async (req, res, next) => {
     if (categoryId) query.categoryId = categoryId;
     if (isActive !== undefined) query.isActive = isActive;
 
-    const items = await Item.find(query).sort({ name: 1 });
+    const items = await Item.find(query)
+      .populate("categoryId", "name") // Populate only the 'name' field from Category
+      .lean() // Use lean for better performance as we are formatting the output
+      .sort({ name: 1 });
+
+    const formattedItems = items.map((item) => ({
+      ...item,
+      categoryName: item.categoryId ? item.categoryId.name : null,
+    }));
 
     res.json({
       success: true,
-      count: items.length,
-      data: items,
+      count: formattedItems.length,
+      data: formattedItems,
     });
   } catch (error) {
     next(error);
@@ -166,27 +156,24 @@ export const getItemById = async (req, res, next) => {
 // Update item
 export const updateItem = async (req, res, next) => {
   try {
-    console.log("req=body", req.body);
-
+    // Removed console.log("req=body", req.body); for cleaner logs
     const context = getIdsFromHeaders(req, res);
     if (context.error) return;
 
-    const { organizationId, branchId } = context;
-    // finding item is linked with menu item
-    const itemId = req.params.id;
-    // Check if item linked with any menu
+    const { organizationId, branchId } = context; // finding item is linked with menu item
+    const itemId = req.params.id; // Check if item linked with any menu
     const isLinkedWithMenu = await Menu.exists({
       organizationId,
       branchId,
       "items.itemId": itemId,
-    });
+    }); // Note: This check correctly prevents deactivating an item linked to a menu.
 
     if (isLinkedWithMenu && req.body.isActive === false) {
       return res.status(400).json({
         success: false,
         message: "Item is linked with menu and cannot be deactivated",
       });
-    }
+    } // Mongoose will automatically validate and update the pricing array // if the client sends the new 'pricing' field in req.body.
 
     const item = await Item.findOneAndUpdate(
       {
@@ -194,7 +181,7 @@ export const updateItem = async (req, res, next) => {
         organizationId,
         branchId,
       },
-      req.body,
+      req.body, // req.body should now contain the 'pricing' array instead of individual price fields
       { new: true, runValidators: true }
     );
 
@@ -222,18 +209,17 @@ export const deleteItem = async (req, res, next) => {
     if (context.error) return;
 
     const { organizationId, branchId } = context;
-      const itemId = req.params.id;
-    // Check if item linked with any menu
+    const itemId = req.params.id; // Check if item linked with any menu
     const isLinkedWithMenu = await Menu.exists({
       organizationId,
       branchId,
       "items.itemId": itemId,
     });
-    if (isLinkedWithMenu){
+    if (isLinkedWithMenu) {
       return res.status(405).json({
-        success:false,
-        message:"Item is linked with menu and cannot be deleted",
-      })
+        success: false,
+        message: "Item is linked with menu and cannot be deleted",
+      });
     }
 
     const item = await Item.findOneAndDelete({

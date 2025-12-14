@@ -1,7 +1,10 @@
 import Menu from "../models/Menu.model.js";
-import { createMenuSchema } from "../validations/menu.validation.js";
+import {
+  createMenuSchema,
+  updateMenuSchema,
+} from "../validations/menu.validation.js";
 
-
+// 🔐 Header helper
 const getIdsFromHeaders = (req, res) => {
   const organizationId = req.headers["x-organization-id"];
   const branchId = req.headers["x-branch-id"];
@@ -16,16 +19,16 @@ const getIdsFromHeaders = (req, res) => {
   return { organizationId, branchId };
 };
 
-// Create Menu
+// ➕ Create Menu
 export const createMenu = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
+    const ctx = getIdsFromHeaders(req, res);
+    if (ctx.error) return;
 
-    const { organizationId, branchId } = context;
+    const { error, value } = createMenuSchema.validate(req.body, {
+      abortEarly: true,
+    });
 
-    // Validate
-    const { error } = createMenuSchema.validate(req.body);
     if (error) {
       return res.status(400).json({
         success: false,
@@ -33,42 +36,10 @@ export const createMenu = async (req, res, next) => {
       });
     }
 
-    const {
-      name,
-      description,
-      dayOfWeek,
-      dayIndex,
-      items,
-      availableFrom,
-      availableTo,
-      status,
-    } = req.body;
-
-    // Prevent duplicate menu name in same branch
-    const existingMenu = await Menu.findOne({
-      organizationId,
-      branchId,
-      name,
-    });
-
-    if (existingMenu) {
-      return res.status(400).json({
-        success: false,
-        message: "Menu with this name already exists in this branch",
-      });
-    }
-
     const menu = await Menu.create({
-      organizationId,
-      branchId,
-      name,
-      description,
-      dayOfWeek,
-      dayIndex,
-      items,
-      availableFrom,
-      availableTo,
-      status,
+      ...value,
+      organizationId: ctx.organizationId,
+      branchId: ctx.branchId,
     });
 
     res.status(201).json({
@@ -76,30 +47,38 @@ export const createMenu = async (req, res, next) => {
       message: "Menu created successfully",
       data: menu,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Menu with this name already exists in this branch",
+      });
+    }
+    next(err);
   }
 };
 
-
-// Get menus (with filters)
+// 📄 Get Menus
 export const getMenus = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
-
-    const { organizationId, branchId } = context;
-    const { dayOfWeek, status } = req.query;
+    const ctx = getIdsFromHeaders(req, res);
+    if (ctx.error) return;
 
     const query = {
-      organizationId,
-      branchId,
+      organizationId: ctx.organizationId,
+      branchId: ctx.branchId,
     };
-    if (dayOfWeek) query.dayOfWeek = dayOfWeek;
-    if (status) query.status = status;
+
+    if (req.query.suggestedDay) {
+      query.suggestedDay = req.query.suggestedDay;
+    }
+
+    if (req.query.isActive !== undefined) {
+      query.isActive = req.query.isActive === "true";
+    }
 
     const menus = await Menu.find(query)
-      .populate("items.itemId")
+      .populate("items.itemId", "name isVegetarian price uom")
       .sort({ name: 1 });
 
     res.json({
@@ -107,30 +86,27 @@ export const getMenus = async (req, res, next) => {
       count: menus.length,
       data: menus,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
-
-// Get single menu
+// 📄 Get Menu by ID
 export const getMenuById = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
-
-    const { organizationId, branchId } = context;
+    const ctx = getIdsFromHeaders(req, res);
+    if (ctx.error) return;
 
     const menu = await Menu.findOne({
       _id: req.params.id,
-      organizationId,
-      branchId,
-    }).populate("items.itemId");
+      organizationId: ctx.organizationId,
+      branchId: ctx.branchId,
+    }).populate("items.itemId", "name isVegetarian");
 
     if (!menu) {
       return res.status(404).json({
         success: false,
-        message: "Menu not found or does not belong to this branch",
+        message: "Menu not found or access denied",
       });
     }
 
@@ -138,34 +114,42 @@ export const getMenuById = async (req, res, next) => {
       success: true,
       data: menu,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
-
-// Update menu
+// ✏️ Update Menu (SAFE)
 export const updateMenu = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
+    const ctx = getIdsFromHeaders(req, res);
+    if (ctx.error) return;
 
-    const { organizationId, branchId } = context;
+    const { error, value } = updateMenuSchema.validate(req.body, {
+      abortEarly: true,
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
 
     const menu = await Menu.findOneAndUpdate(
       {
         _id: req.params.id,
-        organizationId,
-        branchId,
+        organizationId: ctx.organizationId,
+        branchId: ctx.branchId,
       },
-      req.body,
+      value,
       { new: true, runValidators: true }
-    ).populate("items.itemId");
+    ).populate("items.itemId", "name isVegetarian");
 
     if (!menu) {
       return res.status(404).json({
         success: false,
-        message: "Menu not found or does not belong to this branch",
+        message: "Menu not found or access denied",
       });
     }
 
@@ -174,30 +158,27 @@ export const updateMenu = async (req, res, next) => {
       message: "Menu updated successfully",
       data: menu,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
-
-// Delete menu
+// 🗑 Delete Menu
 export const deleteMenu = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
-
-    const { organizationId, branchId } = context;
+    const ctx = getIdsFromHeaders(req, res);
+    if (ctx.error) return;
 
     const menu = await Menu.findOneAndDelete({
       _id: req.params.id,
-      organizationId,
-      branchId,
+      organizationId: ctx.organizationId,
+      branchId: ctx.branchId,
     });
 
     if (!menu) {
       return res.status(404).json({
         success: false,
-        message: "Menu not found or does not belong to this branch",
+        message: "Menu not found or access denied",
       });
     }
 
@@ -205,7 +186,7 @@ export const deleteMenu = async (req, res, next) => {
       success: true,
       message: "Menu deleted successfully",
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
