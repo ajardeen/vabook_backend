@@ -1,9 +1,8 @@
 import { io } from "../server.js";
-import Order from "../models/Order.model.js";
-import KitchenTask from "../models/KitchenTask.model.js";
-import { updateKitchenStatusSchema } from "../validations/kitchen.validation.js";
+// controllers/kitchen.controller.js
 import dayjs from "dayjs";
-
+import DailyMeal from "../models/DailyMeal.model.js";
+import Customer from "../models/Customer.model.js";
 
 const getIdsFromHeaders = (req, res) => {
   const organizationId = req.headers["x-organization-id"];
@@ -12,90 +11,200 @@ const getIdsFromHeaders = (req, res) => {
   if (!organizationId || !branchId) {
     res.status(400).json({
       success: false,
-      message: "Organization ID and Branch ID are required in headers",
+      message: "Organization ID and Branch ID are required",
     });
-    return { error: true };
+    return null;
   }
   return { organizationId, branchId };
 };
 
-// Get Kitchen Tasks for Today
+
+// GET /kitchen
 export const getKitchenTasks = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
+    const ctx = getIdsFromHeaders(req, res);
+    if (!ctx) return;
 
-    const { organizationId, branchId } = context;
-
-    if (!branchId || !organizationId)
-      return res.status(400).json({
-        success: false,
-        message: "branchId and organizationId required",
-      });
+    const { branchId } = ctx;
 
     const start = dayjs().startOf("day").toDate();
     const end = dayjs().endOf("day").toDate();
 
-    const tasks = await KitchenTask.find({
+    const meals = await DailyMeal.find({
       branchId,
-      organizationId,
-      // deliveryDate: { $gte: start, $lte: end },
-    }).populate("menuId");
-    
+      // date: { $gte: start, $lte: end }, // ✅ today only
+      kitchenStatus: { $ne: "cancelled" },
+    })
+      .populate("customerId", "fullName")
+      .populate("chefId", "name") // 🔥 NEW (optional but useful)
+      .lean();
 
-    res.json({ success: true, count: tasks.length, data: tasks });
-  } catch (error) {
-    next(error);
+    const response = meals.map((m) => {
+      /**
+       * BACKEND → UI STATUS MAP
+       */
+      const statusMap = {
+        scheduled: "queue",
+        preparing: "cooking",
+        ready: "ready",
+        completed: "completed",
+      };
+
+      const items = m.items.map((i) => ({
+        itemName: i.name,
+        qty: i.qty,
+        prepTimeMinutes: 5, // ⛔ static for now (UI dependency)
+      }));
+
+      return {
+        _id: m._id,
+        customerName: m.customerId?.fullName ?? "Customer",
+        bundleName: m.menuName,
+        deliveryDate: m.date,
+
+        items,
+        totalPrepTime: items.length * 5,
+
+        status: statusMap[m.kitchenStatus] ?? "queue",
+
+        // 🔥 EXTRA (UI-safe, ignored if unused)
+        chef: m.chefId
+          ? {
+              id: m.chefId._id,
+              name: m.chefId.name,
+            }
+          : null,
+
+        kitchenStatus: m.kitchenStatus, // for debugging / future UI
+      };
+    });
+
+    res.json({
+      success: true,
+      count: response.length,
+      data: response,
+    });
+  } catch (err) {
+    next(err);
   }
 };
 
-// Update Kitchen Task Status
-
 export const updateKitchenStatus = async (req, res, next) => {
   try {
-    const { taskId } = req.params;
-    const { status } = req.body;
+    const { id } = req.params;
+    const { status, chefId } = req.body;
 
-    const task = await KitchenTask.findById(taskId);
-    if (!task) return res.status(404).json({ success: false, message: "Task not found" });
-
-    task.status = status;
-    await task.save();
-
-    const order = await Order.findById(task.orderId);
-    if (order) {
-      const menu = order.menusStatus.find(
-        m => m.menuId.toString() === task.menuId.toString()
-      );
-      if (menu) menu.status = status;
-
-      // ✅ when all kitchen tasks done -> READY (not delivered)
-      const allFinished = order.menusStatus.every(m => m.status === "completed");
-      if (allFinished) {
-        order.status = "ready";
-        order.statusHistory.push({ status: "ready", note: "Order prepared by kitchen" });
-
-        // mark ready for pickup in delivery
-        if (!order.delivery) order.delivery = {};
-        order.delivery.deliveryStatus = "ready_for_pickup";
-        order.delivery.deliveryStatusHistory.push({
-          status: "ready_for_pickup",
-          note: "Order is ready for pickup by rider",
-        });
-      }
-
-      await order.save();
+    const meal = await DailyMeal.findById(id);
+    if (!meal) {
+      return res.status(404).json({
+        success: false,
+        message: "Daily meal not found",
+      });
     }
 
-    io.emit("kitchen:update", {
-      taskId,
-      status,
-      orderId: task.orderId,
-      menuId: task.menuId,
+    /**
+     * STATUS MAP (frontend → backend)
+     */
+    const statusMap = {
+      cooking: "preparing",
+      ready: "ready",
+      completed: "completed",
+    };
+
+    const nextStatus = statusMap[status];
+    if (!nextStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid kitchen status",
+      });
+    }
+
+    /**
+     * VALIDATE CHEF OWNERSHIP
+     */
+    if (nextStatus !== "scheduled" && nextStatus !== "cancelled") {
+      if (!chefId) {
+        return res.status(400).json({
+          success: false,
+          message: "chefId is required for this action",
+        });
+      }
+    }
+
+    /**
+     * START COOKING
+     */
+    if (meal.kitchenStatus === "scheduled" && nextStatus === "preparing") {
+      meal.chefId = chefId;
+    }
+
+    /**
+     * PREVENT OTHER CHEFS FROM MODIFYING
+     */
+    if (meal.chefId && chefId && meal.chefId.toString() !== chefId) {
+      return res.status(403).json({
+        success: false,
+        message: "This task is already assigned to another chef",
+      });
+    }
+
+    /**
+     * VALID STATE TRANSITIONS
+     */
+    const allowedTransitions = {
+      scheduled: ["preparing", "cancelled"],
+      preparing: ["ready", "cancelled"],
+      ready: ["completed"],
+      completed: [],
+    };
+
+    if (!allowedTransitions[meal.kitchenStatus]?.includes(nextStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid transition from ${meal.kitchenStatus} to ${nextStatus}`,
+      });
+    }
+
+    /**
+     * APPLY STATUS
+     */
+    meal.kitchenStatus = nextStatus;
+
+    meal.logs.push({
+      status: nextStatus,
+      updatedAt: new Date(),
+      updatedBy: chefId,
     });
 
-    res.json({ success: true, message: "Kitchen status updated", data: task });
-  } catch (error) {
-    next(error);
+    /**
+     * WHEN COMPLETED → OPEN DELIVERY PIPELINE
+     */
+    if (nextStatus === "completed") {
+      meal.deliveryStatus = "ready_for_pickup";
+      meal.logs.push({
+        status: "ready_for_pickup",
+        updatedAt: new Date(),
+        updatedBy: chefId,
+      });
+    }
+
+    await meal.save();
+
+    /**
+     * SOCKET UPDATE
+     */
+    io.emit("kitchen:update", {
+      mealId: meal._id,
+      kitchenStatus: meal.kitchenStatus,
+      chefId: meal.chefId,
+    });
+
+    res.json({
+      success: true,
+      message: "Kitchen status updated successfully",
+      data: meal,
+    });
+  } catch (err) {
+    next(err);
   }
 };

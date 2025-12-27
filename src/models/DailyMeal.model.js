@@ -1,219 +1,75 @@
-import DailyMeal from "../models/DailyMeal.model.js";
-import StaffAccount from "../models/StaffAccount.model.js";
+import mongoose from "mongoose";
+const { Schema } = mongoose;
 
-const getIdsFromHeaders = (req, res) => {
-  const organizationId = req.headers["x-organization-id"];
-  const branchId = req.headers["x-branch-id"];
+// Track history of status changes (e.g., "Kitchen started at 10:00 AM")
+const StatusLogSchema = new Schema({
+  status: { type: String, required: true },
+  updatedAt: { type: Date, default: Date.now },
+  updatedBy: { type: Schema.Types.ObjectId } // User ID of Chef or Rider
+}, { _id: false });
 
-  if (!organizationId || !branchId) {
-    res.status(400).json({
-      success: false,
-      message: "Organization ID and Branch ID are required in headers",
-    });
-    return { error: true };
-  }
-  return { organizationId, branchId };
-};
+const DailyMealSchema = new Schema({
+  // Link to Parents
+  subscriptionId: { type: Schema.Types.ObjectId, ref: "Subscription", required: true, index: true },
+  customerId: { type: Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
+  organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
+  branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
 
+  // The "When"
+  date: { type: Date, required: true, index: true }, // 2025-10-01 (Midnight UTC)
+  dayIndex: { type: Number, required: true }, // 0, 1, 2...
 
-export const assignRider = async (req, res, next) => {
-  try {
-    const { error, branchId } = getIdsFromHeaders(req, res);
-    if (error) return;
+  // The "What" (Snapshot from Menu)
+  menuId: { type: Schema.Types.ObjectId, ref: "Menu" },
+  menuName: { type: String }, 
+  items: [{
+    itemId: { type: Schema.Types.ObjectId, ref: "Item" },
+    name: String,
+    qty: Number
+  }],
 
-    const { mealId } = req.params;
-    const { riderId } = req.body;
-
-    const rider = await StaffAccount.findOne({
-      _id: riderId,
-      role: "rider",
-      status: "active",
-    });
-
-    if (!rider) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or inactive rider",
-      });
-    }
-
-    const meal = await DailyMeal.findOne({
-      _id: mealId,
-      branchId,
-    });
-
-    if (!meal) {
-      return res.status(404).json({
-        success: false,
-        message: "DailyMeal not found",
-      });
-    }
-
-    meal.riderId = rider._id;
-    meal.deliveryStatus = "assigned";
-    meal.logs.push({
-      status: "assigned",
-      updatedBy: rider._id,
-    });
-
-    await meal.save();
-
-    // socket emit optional
-    // io.emit("delivery:update", { mealId, status: "assigned" });
-
-    res.json({
-      success: true,
-      message: "Rider assigned successfully",
-      data: meal,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
+  chefId:{ type: Schema.Types.ObjectId, ref: "StaffAccount", default: null, index: true },
+  // 1. Kitchen Lifecycle
+  kitchenStatus: {
+    type: String,
+    enum: ["scheduled", "preparing", "ready","completed", "cancelled"],
+    default: "scheduled"
+  },
+  // 2. Delivery Lifecycle
+  deliveryStatus: {
+    type: String,
+    enum: [
+      "pending",          // Waiting for kitchen
+      "ready_for_pickup", // Kitchen done, broadcasting to riders
+      "assigned",         // Rider accepted
+      "picked_up",        // Rider has food
+      "en_route",         // On the way
+      "delivered",        // Done
+      "failed"
+    ],
+    default: "pending"
+  },
+  
+  // Rider Details
+  riderId: { type: Schema.Types.ObjectId, ref: "StaffAccount", default: null, index: true },
+  deliveryOtp: { type: String }, // Generated when status becomes 'out_for_delivery'
+  
+  // Location for this specific day
+  deliveryId:{
+    type: Schema.Types.ObjectId,
+    ref: "Delivery"
+  },
 
 
-export const updateDeliveryStatus = async (req, res, next) => {
-  try {
-    const { error, branchId } = getIdsFromHeaders(req, res);
-    if (error) return;
+  logs: [StatusLogSchema] // Full audit trail
+}, { timestamps: true });
 
-    const { mealId } = req.params;
-    const { status, riderId } = req.body;
+// COMPOUND INDEXES (Crucial for Dashboard Speed)
 
-    const allowedStatuses = [
-      "picked_up",
-      "en_route",
-      "delivered",
-      "failed",
-    ];
+// 1. "Show me what to cook today"
+DailyMealSchema.index({ branchId: 1, date: 1, kitchenStatus: 1 });
 
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid delivery status",
-      });
-    }
+// 2. "Show me open deliveries for today"
+DailyMealSchema.index({ branchId: 1, date: 1, deliveryStatus: 1 });
 
-    const meal = await DailyMeal.findOne({
-      _id: mealId,
-      branchId,
-    });
-
-    if (!meal) {
-      return res.status(404).json({
-        success: false,
-        message: "DailyMeal not found",
-      });
-    }
-
-    // enforce rider ownership
-    if (meal.riderId && riderId && meal.riderId.toString() !== riderId) {
-      return res.status(403).json({
-        success: false,
-        message: "This meal is assigned to another rider",
-      });
-    }
-
-    meal.deliveryStatus = status;
-
-    meal.logs.push({
-      status,
-      updatedBy: riderId || meal.riderId,
-    });
-
-    await meal.save();
-
-    // socket emit optional
-    // io.emit("delivery:update", { mealId, status });
-
-    res.json({
-      success: true,
-      message: "Delivery status updated",
-      data: meal,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-import dayjs from "dayjs";
-
-export const getRiderJobsForToday = async (req, res, next) => {
-  try {
-    const { error, branchId } = getIdsFromHeaders(req, res);
-    if (error) return;
-
-    const start = dayjs().startOf("day").toDate();
-    const end = dayjs().endOf("day").toDate();
-
-    const meals = await DailyMeal.find({
-      branchId,
-      date: { $gte: start, $lte: end },
-      deliveryStatus: { $in: ["ready_for_pickup", "assigned"] },
-    })
-      .populate("menuId", "name")
-      .populate("customerId", "fullName phone");
-
-    const jobs = meals.map((m) => ({
-      mealId: m._id,
-      date: m.date,
-      menuName: m.menuName,
-      deliveryStatus: m.deliveryStatus,
-      customer: {
-        name: m.customerId?.fullName,
-        phone: m.customerId?.phone,
-      },
-      deliveryAddress: m.deliveryAddress?.text,
-    }));
-
-    res.json({
-      success: true,
-      count: jobs.length,
-      data: jobs,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const getRiderMealDetail = async (req, res, next) => {
-  try {
-    const { error, branchId } = getIdsFromHeaders(req, res);
-    if (error) return;
-
-    const { mealId } = req.params;
-
-    const meal = await DailyMeal.findOne({
-      _id: mealId,
-      branchId,
-    })
-      .populate("menuId", "name")
-      .populate("customerId", "fullName phone email");
-
-    if (!meal) {
-      return res.status(404).json({
-        success: false,
-        message: "DailyMeal not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        mealId: meal._id,
-        date: meal.date,
-        menuName: meal.menuName,
-        deliveryStatus: meal.deliveryStatus,
-        deliveryAddress: meal.deliveryAddress,
-        customer: {
-          name: meal.customerId?.fullName,
-          phone: meal.customerId?.phone,
-          email: meal.customerId?.email,
-        },
-        items: meal.items,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
+export default mongoose.model("DailyMeal", DailyMealSchema);

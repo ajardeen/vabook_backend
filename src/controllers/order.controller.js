@@ -6,8 +6,10 @@ import KitchenTask from "../models/KitchenTask.model.js";
 import Bundle from "../models/Bundle.model.js";
 import Order from "../models/Order.model.js";
 import Customer from "../models/Customer.model.js";
+import Subscription from "../models/Subscription.model.js";
 import StaffAccount from "../models/StaffAccount.model.js";
 import dayjs from "dayjs";
+import DailyMeal from "../models/DailyMeal.model.js";
 // Generate Unique Order Number
 const generateOrderNumber = () => "ORD-" + Date.now();
 
@@ -27,7 +29,7 @@ const getIdsFromHeaders = (req, res) => {
 
 // Create Order
 export const createOrder = async (req, res, next) => {
-  try { 
+  try {
     const context = getIdsFromHeaders(req, res);
     if (context.error) return;
 
@@ -207,7 +209,7 @@ export const getOrdersByCustomerId = async (req, res, next) => {
     if (context.error) return;
 
     const { organizationId, branchId } = context;
-    const orders = await Order.find({ organizationId, branchId, customerId });
+    const orders = await DailyMeal.find({ organizationId, branchId, customerId });
     if (!orders) {
       return res.status(404).json({
         success: false,
@@ -400,96 +402,237 @@ export const getKitchenOrders = async (req, res, next) => {
 };
 
 // delivery related api controllers
+
+// GET /orders/rider/jobs
+// GET /orders/rider/jobs
 export const getRiderJobsForToday = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
-    const { organizationId, branchId } = context;
+    const ctx = getIdsFromHeaders(req, res);
+    if (!ctx) return;
+
+    const { organizationId, branchId } = ctx;
 
     const start = dayjs().startOf("day").toDate();
     const end = dayjs().endOf("day").toDate();
 
-    // all menus ready to go for today
-    const tasks = await KitchenTask.find({
+    const meals = await DailyMeal.find({
       organizationId,
       branchId,
-      status: "completed",
-      // deliveryDate: { $gte: start, $lte: end },
+      // date: { $gte: start, $lte: end },
+      deliveryStatus: { $ne: "pending" },
+  //     $or: [
+  //   { riderId: null },        // available jobs
+  //   { riderId: riderId },     // my jobs
+  // ],
     })
-      .populate("menuId")
-      .populate({
-        path: "orderId",
-        populate: {
-          path: "customerId",
-          select: "fullName phone email deliveryAddress", // pick only needed fields
-        },
-      });
+      .select("_id menuName deliveryStatus date subscriptionId deliveryId")
+      .lean();
 
-    // shape data for rider
-    const jobs = tasks.map((t) => ({
-      taskId: t._id,
-      menuId: t.menuId._id,
-      orderId: t.orderId._id,
-      orderNumber: t.orderId.orderNumber,
-      menuName: t.menuId.name,
-      deliveryStatus: t.orderId.delivery?.deliveryStatus || "pending",
-      deliveryAddress: t.orderId.delivery?.deliveryAddress,
-    }));
+    if (!meals.length) {
+      return res.json({ success: true, count: 0, data: [] });
+    }
 
-    return res.json({ success: true, count: jobs.length, data: jobs });
+    // 🔑 Fetch related subscriptions
+    const subscriptionIds = meals.map((m) => m.subscriptionId);
+    const subscriptions = await Subscription.find({
+      _id: { $in: subscriptionIds },
+    })
+      .select("deliveryId deliveryAddress")
+      .lean();
+
+    const subMap = {};
+    subscriptions.forEach((s) => {
+      subMap[s._id.toString()] = s;
+    });
+
+    const jobs = meals.map((m) => {
+      const sub = subMap[m.subscriptionId.toString()];
+
+      return {
+        taskId: m._id,
+        jobCode: `MEAL-${m._id.toString().slice(-6)}`,
+        menuName: m.menuName,
+        deliveryStatus: m.deliveryStatus,
+        paymentStatus :sub?.paymentStatus,
+        scheduledDate: m.date,
+
+        // ✅ delivery address from subscription
+        deliveryAddress: sub?.deliveryAddress || null,
+      };
+    });
+
+    res.json({
+      success: true,
+      count: jobs.length,
+      data: jobs,
+    });
   } catch (err) {
     next(err);
   }
 };
 
-// GET /rider/task/:taskId
+// GET /orders/rider/jobs
+// GET /orders/rider/jobs
 export const getRiderOrderDetail = async (req, res, next) => {
   try {
-    const context = getIdsFromHeaders(req, res);
-    if (context.error) return;
-    const { organizationId, branchId } = context;
+    const ctx = getIdsFromHeaders(req, res);
+    if (!ctx) return;
+
+    const { organizationId, branchId } = ctx;
     const { taskId } = req.params;
 
-    const task = await KitchenTask.findOne({
+    const meal = await DailyMeal.findOne({
       _id: taskId,
       organizationId,
       branchId,
     })
-      .populate("menuId")
-      .populate({
-        path: "orderId",
-        populate: {
-          path: "customerId",
-          select: "fullName phone email",
-        },
-      });
+      .populate("customerId", "fullName phone email")
+      .lean();
 
-    if (!task) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Task not found" });
+    if (!meal) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery task not found",
+      });
     }
 
-    const order = task.orderId;
+    const subscription = await Subscription.findById(
+      meal.subscriptionId
+    ).lean();
 
-    return res.json({
+    if (
+      !subscription ||
+      subscription.deliveryId.toString() !== meal.deliveryId.toString()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid delivery mapping",
+      });
+    }
+
+    const isAccepted =
+      meal.deliveryStatus !== "pending" &&
+      meal.deliveryStatus !== "ready_for_pickup";
+
+    res.json({
       success: true,
       data: {
+        taskId: meal._id,
+        orderNumber: `MEAL-${meal._id.toString().slice(-6)}`,
+        bundleName: subscription.bundleName,
+        menuName: meal.menuName,
+        quantity: 1,
+        deliveryStatus: meal.deliveryStatus,
+        paymentStatus :subscription?.paymentStatus,
+
+
+
+        // ✅ always visible
+        deliveryAddress: subscription.deliveryAddress,
+
+        // 🔒 visible only after accept
+        customer: isAccepted
+          ? {
+              name: meal.customerId.fullName,
+              phone: meal.customerId.phone,
+              email: meal.customerId.email,
+            }
+          : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/orders/:orderId/delivery-status
+// body: { action: "accept" | "pickup" | "on_the_way" | "delivered" }
+
+// POST /api/orders/:taskId/delivery-status
+export const updateDeliveryStatus = async (req, res, next) => {
+  try {
+    const { taskId } = req.params;
+    const { action, riderId } = req.body;
+
+    const meal = await DailyMeal.findById(taskId);
+    if (!meal) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery task not found",
+      });
+    }
+
+    let newStatus;
+
+    // 🔒 Prevent double-delivery
+    if (action === "delivered" && meal.deliveryStatus === "delivered") {
+      return res.status(400).json({
+        success: false,
+        message: "Meal already delivered",
+      });
+    }
+
+    if (action === "accept") {
+      if (!riderId) {
+        return res.status(400).json({
+          success: false,
+          message: "riderId required",
+        });
+      }
+
+      newStatus = "assigned";
+      meal.riderId = riderId;
+    } else if (action === "pickup") {
+      newStatus = "picked_up";
+    } else if (action === "on_the_way") {
+      newStatus = "en_route";
+    } else if (action === "delivered") {
+      newStatus = "delivered";
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid action",
+      });
+    }
+
+    // Update DailyMeal
+    meal.deliveryStatus = newStatus;
+    meal.logs.push({
+      status: newStatus,
+      updatedAt: new Date(),
+      updatedBy: riderId || null,
+    });
+
+    await meal.save();
+
+    // 🧠 SUBSCRIPTION UPDATE (only on delivery)
+    if (newStatus === "delivered") {
+      const subscription = await Subscription.findById(meal.subscriptionId);
+
+      if (!subscription) {
+        return res.status(404).json({
+          success: false,
+          message: "Subscription not found",
+        });
+      }
+
+      // Increment safely
+      subscription.mealsConsumed += 1;
+
+      // Auto-complete subscription
+      if (subscription.mealsConsumed >= subscription.totalMeals) {
+        subscription.status = "completed";
+      }
+
+      await subscription.save();
+    }
+
+    res.json({
+      success: true,
+      message: `Delivery status updated to ${newStatus}`,
+      data: {
         taskId,
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        bundleName: order.bundleName,
-        menuName: task.menuId?.name,
-        quantity: order.quantity,
-        price: order.price,
-        deliveryStatus: order.delivery.deliveryStatus,
-        deliveryAddress: order.delivery.deliveryAddress,
-        deliveryLocation: order.delivery.deliveryLocation,
-        customer: {
-          name: order.customerId.fullName,
-          phone: order.customerId.phone,
-          email: order.customerId.email,
-        },
+        status: newStatus,
       },
     });
   } catch (err) {
@@ -498,121 +641,3 @@ export const getRiderOrderDetail = async (req, res, next) => {
 };
 
 
-// POST /api/orders/:orderId/delivery-status
-// body: { action: "accept" | "pickup" | "on_the_way" | "delivered" }
-
-export const updateDeliveryStatus = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { action, riderId } = req.body;
-
-    const task = await KitchenTask.findById(taskId);
-    if (!task) {
-      return res.status(404).json({ success: false, message: "Task not found" });
-    }
-
-    // find order
-    const order = await Order.findById(task.orderId);
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    let newStatus;
-    let note = "";
-
-    // ───────────────────────────────
-    // 1️⃣ ACCEPT → assign rider
-    // ───────────────────────────────
-    if (action === "accept") {
-      if (!riderId) {
-        return res.status(400).json({
-          success: false,
-          message: "riderId required when accepting order",
-        });
-      }
-
-      const rider = await StaffAccount.findOne({
-        _id: riderId,
-        status: "active",
-        role: "rider",
-      });
-
-      if (!rider) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid rider id",
-        });
-      }
-
-      newStatus = "assigned";
-      order.delivery.riderId = rider._id;
-      order.delivery.riderName = rider.name;
-      order.delivery.contactNumber = rider.phone;
-      note = "Rider accepted delivery";
-    }
-
-    // ───────────────────────────────
-    // 2️⃣ PICKUP
-    // ───────────────────────────────
-    else if (action === "pickup") {
-      newStatus = "picked_up";
-      order.status = "out_for_delivery";
-      note = "Order picked up by rider";
-    }
-
-    // ───────────────────────────────
-    // 3️⃣ ON THE WAY
-    // ───────────────────────────────
-    else if (action === "on_the_way") {
-      newStatus = "en_route";
-      order.status = "out_for_delivery";
-      note = "Order is on the way";
-    }
-
-    // ───────────────────────────────
-    // 4️⃣ DELIVERED
-    // ───────────────────────────────
-    else if (action === "delivered") {
-      newStatus = "delivered";
-      order.status = "delivered";
-      order.delivery.deliveredAt = new Date();
-      note = "Order delivered to customer";
-    }
-
-    // ───────────────────────────────
-    else {
-      return res.status(400).json({ success: false, message: "Invalid action" });
-    }
-
-    // ───────────────────────────────
-    // Update order delivery status
-    // ───────────────────────────────
-    order.delivery.deliveryStatus = newStatus;
-    order.delivery.deliveryStatusHistory.push({
-      status: newStatus,
-      note,
-    });
-
-    // ───────────────────────────────
-    // Update ONLY this menu's status inside order
-    // ───────────────────────────────
-    const menu = order.menusStatus.find(
-      (m) => m.menuId.toString() === task.menuId.toString()
-    );
-    if (menu) {
-      // only this task's menu status
-      menu.status = action === "delivered" ? "completed" : menu.status;
-    }
-
-    await order.save();
-    await task.save();
-
-    return res.json({
-      success: true,
-      message: `Delivery status updated to ${newStatus}`,
-      data: { taskId, orderId: order._id, status: newStatus },
-    });
-  } catch (err) {
-    next(err);
-  }
-};

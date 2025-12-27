@@ -25,6 +25,7 @@ const BundleSchema = new Schema(
     },
 
     name: { type: String, required: true },
+    description: { type: String, required: true },
     price: { type: Number, required: true },
     
     // ✅ NEW FIELD: Replaces the old `filterMealType` logic and goes into the model
@@ -38,7 +39,7 @@ const BundleSchema = new Schema(
     totalMealsCount: { type: Number, required: true, min: 1 }, 
 
     // ❌ REMOVED: durationDays is no longer needed since the schedule is fixed (7 days)
-    // durationDays: { type: Number, default: 7 }, 
+    // durationDays:  
 
     schedule: {
       type: [BundleDaySchema],

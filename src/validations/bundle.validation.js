@@ -2,6 +2,7 @@ import Joi from "joi";
 
 export const createBundleSchema = Joi.object({
   name: Joi.string().min(3).max(150).required(),
+  description: Joi.string().min(3).max(500).optional(),
   bundleMealType: Joi.string()
     .valid("breakfast", "lunch", "dinner", "snacks", "all_day")
     .required(),
@@ -25,6 +26,8 @@ export const createBundleSchema = Joi.object({
 
 export const updateBundleSchema = Joi.object({
   name: Joi.string().min(3).max(150).optional(),
+  description: Joi.string().min(3).max(500).optional(),
+
   price: Joi.number().min(0).optional(),
   durationDays: Joi.number().min(1).max(365).optional(),
 
