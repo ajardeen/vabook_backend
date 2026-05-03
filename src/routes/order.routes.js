@@ -1,11 +1,11 @@
 import { Router } from "express";
 import {
-  createOrder,
-  getOrders,
-  getOrderById,
-  updateCycleStatus,
-  getOrdersByOrgAndBranch,
-  approveOrder,
+  // createOrder,
+  // getOrders,
+  // getOrderById,
+  // updateCycleStatus,
+  // getOrdersByOrgAndBranch,
+  // approveOrder,
   getOrdersByCustomerId,
   getRiderJobsForToday,
   updateDeliveryStatus,
@@ -15,13 +15,13 @@ import {
 const router = Router();
 
 
-router.post("/", createOrder);
-router.get("/", getOrders);
-router.get("/by-org-branch", getOrdersByOrgAndBranch);
-router.get("/:id", getOrderById);
+// router.post("/", createOrder);
+// router.get("/", getOrders);
+// router.get("/by-org-branch", getOrdersByOrgAndBranch);
+// router.get("/:id", getOrderById);
 router.get("/customer/:customerId", getOrdersByCustomerId);
-router.patch("/:orderId/cycle/:cycleId/status", updateCycleStatus);
-router.put("/approve/:orderId", approveOrder);
+// router.patch("/:orderId/cycle/:cycleId/status", updateCycleStatus);
+// router.put("/approve/:orderId", approveOrder);
 
 router.get("/rider/jobs", getRiderJobsForToday);
 router.get("/rider/task/:taskId", getRiderOrderDetail);
