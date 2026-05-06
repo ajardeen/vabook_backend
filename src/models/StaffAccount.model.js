@@ -19,7 +19,7 @@ const StaffAccountSchema = new Schema(
     },
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, trim: true },
-    phone: { type: String, unique: true, sparse: true },
+    phone: { type: String,  },
     password: { type: String, required: true },
     position: { type: String, trim: true },
     department: { type: String, trim: true },

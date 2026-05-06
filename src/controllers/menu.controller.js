@@ -78,7 +78,7 @@ export const getMenus = async (req, res, next) => {
     }
 
     const menus = await Menu.find(query)
-      .populate("items.itemId", "name isVegetarian price uom")
+      .populate("items.itemId", "name isVegetarian pricing uom")
       .sort({ name: 1 });
 
     res.json({

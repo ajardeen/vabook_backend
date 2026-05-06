@@ -7,6 +7,7 @@ export const createBundleSchema = Joi.object({
     .valid("breakfast", "lunch", "dinner", "snacks", "all_day")
     .required(),
   price: Joi.number().min(0).required(),
+  img:Joi.string().allow("", null).optional(),
 
   totalMealsCount: Joi.number().min(1).max(365).required(),
 

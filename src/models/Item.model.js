@@ -1,3 +1,4 @@
+;
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
@@ -39,7 +40,7 @@ const ItemSchema = new Schema(
         // **REMOVED categoryName**: Avoid redundancy; rely on population of Category.
 
         // --- Core Details ---
-        sku: { type: String, trim: true, index: true, unique: true },
+        sku: { type: String, trim: true,},
         name: { type: String, required: true, trim: true },
         description: { type: String, default: "" },
 
@@ -49,6 +50,7 @@ const ItemSchema = new Schema(
         prepTimeMinutes: { type: Number, default: 0 }, 
         
         // --- Consolidated Pricing (Flexible) ---
+        
         // 'price' can be calculated dynamically based on the 'base' tier
         pricing: { type: [PricingTierSchema], default: [] }, 
 
@@ -73,6 +75,6 @@ const ItemSchema = new Schema(
 
 // Search indexes remain robust
 ItemSchema.index({ organizationId: 1, branchId: 1, name: "text" });
-ItemSchema.index({ branchId: 1, sku: 1 }, { unique: false, sparse: true });
+ItemSchema.index({ organizationId: 1, branchId: 1, sku: 1 }, { unique: true });
 
 export default mongoose.model("Item", ItemSchema);

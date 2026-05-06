@@ -7,16 +7,16 @@ import {
   deleteBundle,
   getPublishedBundles,
 } from "../controllers/bundle.controller.js";
+import { upload } from "../middleware/multer.js";
 
 const router = Router();
 
-router.post("/", createBundle);
+router.post("/", upload.single("img"), createBundle);
 router.get("/", getBundles);
-// exposed to external services 
+// exposed to external services
 router.get("/published", getPublishedBundles);
 router.get("/:id", getBundleById);
-router.put("/:id", updateBundle);
+router.put("/:id", upload.single("img"), updateBundle);
 router.delete("/:id", deleteBundle);
-
 
 export default router;

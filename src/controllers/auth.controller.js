@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/jwt.js";
 import StaffAccountModel from "../models/StaffAccount.model.js";
 
+
 // SIGNUP
 export const signup = async (req, res, next) => {
   try {
@@ -31,40 +32,59 @@ export const signup = async (req, res, next) => {
 // LOGIN
 export const login = async (req, res, next) => {
   try {
-    const { email, password, role } = req.body;
+    // Destructure accountId (organization ID) from the body
+    const { email, password, role, organizationId } = req.body;
 
     let user;
 
-    // ADMIN
+    // --- 1. ADMIN LOGIC ---
     if (role === "admin") {
       user = await Account.findOne({ email });
-    }
-    // STAFF / CHEF / RIDER
+    } 
+    // --- 2. STAFF / CHEF / RIDER LOGIC ---
     else {
-      user = await StaffAccountModel
-        .findOne({ email, role })
-        .populate("organizationId branchId");
+      // Validate that accountId was provided for non-admin roles
+      if (!organizationId) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Organization selection is required for this role." 
+        });
+      }
+      // console.log( email, password, role, organizationId);
+      
+      // Query includes organizationId to ensure the staff belongs to the selected org
+      user = await StaffAccountModel.findOne({ 
+        email, 
+        role, 
+        organizationId: organizationId // Ensure they belong to the selected org
+      }).populate("organizationId branchId");
     }
 
-    if (!user)
-      return res.status(400).json({ success: false, message: "Invalid email or password" });
+    // --- 3. VALIDATION ---
+    if (!user) {
+      return res.status(400).json({ success: false, message: "Invalid email, password, or organization" });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
+    if (!isMatch) {
       return res.status(400).json({ success: false, message: "Invalid email or password" });
+    }
 
-    if (user.role !== role)
+    // Double check role matching
+    if (user.role !== role) {
       return res.status(400).json({ success: false, message: "Unauthorized role" });
+    }
 
-    // 🔥 Prepare account response exactly for AuthContext
+    // --- 4. RESPONSE PAYLOAD ---
     const accountPayload = {
       _id: user._id,
       name: user.name,
       email: user.email,
       phone: user.phone,
       role: user.role,
-      organizationId: user.organizationId?._id || null,
-      branchId: user.branchId?._id || null,
+      // Use optional chaining to handle both populated and unpopulated cases
+      organizationId: user.organizationId?._id || user.organizationId || null,
+      branchId: user.branchId?._id || user.branchId || null,
     };
 
     res.json({
@@ -73,6 +93,8 @@ export const login = async (req, res, next) => {
       data: {
         token: generateToken(user),
         account: accountPayload,
+        // Optional: send back the full organization details if needed by frontend
+        organization: role !== "admin" ? user.organizationId : null 
       },
     });
   } catch (error) {
