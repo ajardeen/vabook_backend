@@ -8,21 +8,21 @@ import {
   deleteCustomerAddress,
   getCustomerById,
   getCustomerAddressById,
-
+  verifyCustomerOtp,
+  resendCustomerOtp,
 } from "../controllers/customer.controller.js";
 
 const router = Router();
 
 router.post("/register", registerCustomer);
 router.post("/login", loginCustomer);
+router.post("/verify-otp", verifyCustomerOtp);
+router.post("/resend-otp", resendCustomerOtp);
 router.post("/forgot-password", forgotPassword);
 router.get("/:customerId", getCustomerById);
-router.get("/address/:customerId/:addressId", getCustomerAddressById)
-router.post("/address/:customerId", addCustomerAddress)
-router.put("/address/:customerId/:addressId", editCustomerAddress)
-router.delete("/address/:customerId/:addressId", deleteCustomerAddress)
-
-
-
+router.get("/address/:customerId/:addressId", getCustomerAddressById);
+router.post("/address/:customerId", addCustomerAddress);
+router.put("/address/:customerId/:addressId", editCustomerAddress);
+router.delete("/address/:customerId/:addressId", deleteCustomerAddress);
 
 export default router;

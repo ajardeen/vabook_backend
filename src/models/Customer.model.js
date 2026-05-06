@@ -13,10 +13,10 @@ const AddressSchema = new Schema(
     pinCode: { type: String, required: true, trim: true },
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
-     deliveryNotes: { type: String, default: "" }, 
+    deliveryNotes: { type: String, default: "" },
     isDefault: { type: Boolean, default: false }, // To mark a default address
   },
-  { _id: true } // Mongoose automatically adds _id to subdocuments by default, but explicitly stating it for clarity
+  { _id: true }, // Mongoose automatically adds _id to subdocuments by default, but explicitly stating it for clarity
 );
 
 // Ensure only one address can be default per customer (if needed, can be enforced at application level or with a custom validator)
@@ -45,9 +45,8 @@ const CustomerSchema = new Schema(
       index: true,
     },
     deliveryAddress: { type: [AddressSchema], default: [] },
-    
 
-    otpCode: { type: String }, // used for forgot password
+    otpCode: { type: String }, // used for verify otp
     otpExpireAt: { type: Date },
 
     status: {
@@ -56,7 +55,7 @@ const CustomerSchema = new Schema(
       default: "active",
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 CustomerSchema.index({ email: 1, organizationId: 1 }, { unique: true });

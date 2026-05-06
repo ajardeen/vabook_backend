@@ -6,6 +6,8 @@ import {
   loginCustomerSchema,
   forgotPasswordSchema,
 } from "../validations/customer.validation.js";
+import {generateOtp} from "../utils/generateOtp.js";
+import { sendOtpMail } from "../utils/sendOtpMail.js";
 
 const getIdsFromHeaders = (req, res) => {
   const organizationId = req.headers["x-organization-id"];
@@ -22,113 +24,322 @@ const getIdsFromHeaders = (req, res) => {
 };
 
 // REGISTER
-export const registerCustomer = async (req, res, next) => {
-  console.log("req.body regi", req.body);
+export const registerCustomer = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const { error } = registerCustomerSchema.validate(req.body);
-    if (error)
-      return res
-        .status(400)
-        .json({ success: false, message: error.details[0].message });
+    const { error } =
+      registerCustomerSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
 
     const context = getIdsFromHeaders(req, res);
 
     if (context.error) return;
 
-    const { organizationId, branchId } = context;
+    const { organizationId, branchId } =
+      context;
 
-    const { fullName, phone, email, password } = req.body;
-
-    const existing = await Customer.findOne({ email, organizationId });
-    if (existing)
-      return res
-        .status(400)
-        .json({ success: false, message: "Customer already exists" });
-
-    const hashed = await bcrypt.hash(password, 10);
-
-    const customer = await Customer.create({
+    const {
       fullName,
       phone,
       email,
-      password: hashed,
-      organizationId,
-      branchId,
-    });
+      password,
+    } = req.body;
+
+    const existing =
+      await Customer.findOne({
+        email,
+        organizationId,
+      });
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer already exists",
+      });
+    }
+
+    const hashed =
+      await bcrypt.hash(password, 10);
+
+ const otp = generateOtp();
+
+await sendOtpMail({
+  email,
+  otp,
+  name: fullName,
+});
+
+const customer = await Customer.create({
+  fullName,
+  phone,
+  email,
+  password: hashed,
+
+  organizationId,
+  branchId,
+
+  otpCode: otp,
+
+  otpExpireAt:
+    new Date(Date.now() + 5 * 60 * 1000),
+});
 
     res.status(201).json({
       success: true,
-      message: "Customer registered successfully",
-      data: customer,
+
+      message:
+        "OTP sent to your email",
+
+      data: {
+        userId: customer._id,
+        email: customer.email,
+      },
     });
   } catch (err) {
+    console.log(err.message);
+    
     next(err);
   }
 };
 
 // LOGIN
-export const loginCustomer = async (req, res, next) => {
-  console.log("req.body", req.body);
+export const loginCustomer = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const { error } = loginCustomerSchema.validate(req.body);
+    const { error } =
+      loginCustomerSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
+
     const context = getIdsFromHeaders(req, res);
-    console.log("context", context);
 
     if (context.error) return;
 
-    const { organizationId, branchId } = context;
-    if (error)
-      return res
-        .status(400)
-        .json({ success: false, message: error.details[0].message });
+    const { organizationId, branchId } =
+      context;
 
     const { email, password } = req.body;
 
-    const customer = await Customer.findOne({
-      organizationId,
-      branchId,
+    const customer =
+      await Customer.findOne({
+        organizationId,
+        branchId,
+        email,
+      });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const valid =
+      await bcrypt.compare(
+        password,
+        customer.password
+      );
+
+    if (!valid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const otp = generateOtp();
+
+    customer.otpCode = otp;
+
+    customer.otpExpireAt =
+      new Date(Date.now() + 5 * 60 * 1000);
+
+    await customer.save();
+
+    await sendOtpMail({
       email,
+      otp,
+      name: customer.fullName,
     });
-    if (!customer)
-      return res
-        .status(404)
-        .json({ success: false, message: "Customer not found" });
-
-    const valid = await bcrypt.compare(password, customer.password);
-    if (!valid)
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid credentials" });
-
-    const token = jwt.sign(
-      {
-        id: customer._id,
-        organizationId: customer.organizationId,
-        branchId: customer.branchId,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-    const structuredCustomer = {
-      _id: customer._id,
-      fullName: customer.fullName,
-      email: customer.email,
-      phone: customer.phone,
-      status: customer.status,
-      deliveryAddress: customer.deliveryAddress,
-    };
 
     res.json({
       success: true,
-      message: "Login successful",
-      token,
-      customer: structuredCustomer,
+
+      message:
+        "OTP sent to your email",
+
+      data: {
+        userId: customer._id,
+        email: customer.email,
+      },
     });
   } catch (err) {
     next(err);
   }
 };
 
+export const verifyCustomerOtp = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const { email, otp } = req.body;
+
+    const context = getIdsFromHeaders(req, res);
+
+    if (context.error) return;
+
+    const { organizationId, branchId } =
+      context;
+
+    const customer =
+      await Customer.findOne({
+        email,
+        organizationId,
+        branchId,
+      });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    if (
+      !customer.otpCode ||
+      customer.otpCode !== otp
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    if (
+      customer.otpExpireAt < new Date()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired",
+      });
+    }
+
+    customer.otpCode = null;
+    customer.otpExpireAt = null;
+
+    await customer.save();
+
+    const token = jwt.sign(
+      {
+        id: customer._id,
+        organizationId:
+          customer.organizationId,
+        branchId: customer.branchId,
+      },
+
+      process.env.JWT_SECRET,
+
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    res.json({
+      success: true,
+
+      message:
+        "OTP verified successfully",
+
+      data: {
+        token,
+
+        customer: {
+          _id: customer._id,
+          fullName: customer.fullName,
+          email: customer.email,
+          phone: customer.phone,
+          status: customer.status,
+          deliveryAddress:
+            customer.deliveryAddress,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const resendCustomerOtp = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const { email } = req.body;
+
+    const context = getIdsFromHeaders(req, res);
+
+    if (context.error) return;
+
+    const { organizationId, branchId } =
+      context;
+
+    const customer =
+      await Customer.findOne({
+        email,
+        organizationId,
+        branchId,
+      });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const otp = generateOtp();
+
+    customer.otpCode = otp;
+
+    customer.otpExpireAt =
+      new Date(Date.now() + 5 * 60 * 1000);
+
+    await customer.save();
+
+    await sendOtpMail({
+      email,
+      otp,
+      name: customer.fullName,
+    });
+
+    res.json({
+      success: true,
+      message: "OTP resent successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 // FORGOT PASSWORD — generates OTP
 export const forgotPassword = async (req, res, next) => {
   console.log("req.body", req.body);
@@ -171,75 +382,6 @@ export const forgotPassword = async (req, res, next) => {
   }
 };
 
-// UPDATE CUSTOMER ACCOUNT
-// export const updateCustomerAccount = async (req, res, next) => {
-//   try {
-//     const { customerId } = req.params;
-//     const context = getIdsFromHeaders(req, res);
-//     if (context.error) return;
-
-//     const { organizationId, branchId } = context;
-//     const { fullName, phone, email, deliveryAddress } = req.body;
-
-//     const customer = await Customer.findOne({ _id: customerId, organizationId, branchId });
-//     if (!customer)
-//       return res.status(404).json({ success: false, message: "Customer not found" });
-
-//     if (email && email !== customer.email) {
-//       const exists = await Customer.findOne({ email, organizationId });
-//       if (exists)
-//         return res.status(400).json({ success: false, message: "Email already exists" });
-//       customer.email = email;
-//     }
-
-//     if (fullName) customer.fullName = fullName;
-//     if (phone) customer.phone = phone;
-
-//     if (Array.isArray(deliveryAddress)) {
-//       // Only one default address allowed
-//       const hasDefault = deliveryAddress.some(a => a.isDefault);
-//       if (hasDefault) {
-//         deliveryAddress.forEach(a => (a.isDefault = false));
-//         deliveryAddress[0].isDefault = true;
-//       }
-//       customer.deliveryAddress = deliveryAddress;
-//     }
-
-//     await customer.save();
-
-//     res.json({
-//       success: true,
-//       customer,
-//       message: "Account updated successfully",
-//     });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
-// export const updateCustomerPassword = async (req, res, next) => {
-//   try {
-//     const { customerId } = req.params;
-//     const { oldPassword, newPassword } = req.body;
-
-//     const customer = await Customer.findById(customerId);
-//     if (!customer)
-//       return res.status(404).json({ success: false, message: "Customer not found" });
-
-//     const valid = await bcrypt.compare(oldPassword, customer.password);
-//     if (!valid)
-//       return res.status(400).json({ success: false, message: "Old password is incorrect" });
-
-//     customer.password = await bcrypt.hash(newPassword, 10);
-//     await customer.save();
-
-//     res.json({ success: true, message: "Password changed successfully" });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
-// getting customer details by customer id
 
 export const getCustomerById = async (req, res, next) => {
   try {
@@ -266,6 +408,8 @@ export const getCustomerById = async (req, res, next) => {
     next(err);
   }
 };
+
+
 
 export const addCustomerAddress = async (req, res, next) => {
   try {

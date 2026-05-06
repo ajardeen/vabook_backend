@@ -5,6 +5,7 @@ const { Schema } = mongoose;
 const MenuItemSubSchema = new Schema(
   {
     itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
+    name: { type: String,  required: true },
     qty: { type: Number, default: 1 },
   },
   { _id: false }
