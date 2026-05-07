@@ -313,3 +313,63 @@ export const getCustomerSubscriptions = async (req, res, next) => {
     next(err);
   }
 };
+
+// GET /subscriptions/:id/customer/:customerId
+export const getSubscriptionById = async (req, res, next) => {
+  try {
+    const ids = getIdsFromHeaders(req, res);
+    if (!ids) return;
+
+    const { organizationId, branchId } = ids;
+    const { id, customerId } = req.params;
+
+    // 1. Fetch the specific subscription
+    const subscription = await Subscription.findOne({
+      _id: id,
+      customerId,
+      organizationId,
+      branchId,
+    }).lean();
+
+    if (!subscription) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Subscription not found or unauthorized access." 
+      });
+    }
+
+    // 2. Fetch delivery stats for this specific subscription
+    const deliveryStats = await DailyMeal.countDocuments({
+      subscriptionId: id,
+      deliveryStatus: "delivered",
+    });
+
+    // 3. Calculate data points
+    const delivered = subscription.mealsConsumed ?? deliveryStats ?? 0;
+    const totalMeals = subscription.totalMeals || 0;
+    const perMealPrice = totalMeals > 0 ? subscription.totalPrice / totalMeals : 0;
+
+    // 4. Format response
+    const response = {
+      id: subscription._id,
+      title: subscription.bundleName,
+      subtitle: `${subscription.mealType} · Subscription`,
+      deliveriesUsed: `${delivered}/${totalMeals}`,
+      balance: Math.max(subscription.totalPrice - delivered * perMealPrice, 0),
+      expiryDate: dayjs(subscription.endDate).format("DD MMM YYYY"),
+      reminder: `${subscription.reminderBeforeEndDays} days before`,
+      deliveryInstruction: subscription.deliveryInstruction || "Not specified",
+      status: subscription.status,
+      // You might want to include extra fields for a "Detail" view
+      startDate: dayjs(subscription.startDate).format("DD MMM YYYY"),
+      totalPrice: subscription.totalPrice,
+    };
+
+    res.json({
+      success: true,
+      data: response,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
