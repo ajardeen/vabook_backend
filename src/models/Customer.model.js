@@ -45,7 +45,11 @@ const CustomerSchema = new Schema(
       index: true,
     },
     deliveryAddress: { type: [AddressSchema], default: [] },
-
+    role: {
+      type: String,
+      enum: ["customer"],
+      default: "customer",
+    },
     otpCode: { type: String }, // used for verify otp
     otpExpireAt: { type: Date },
 
