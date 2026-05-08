@@ -2,19 +2,19 @@ import nodemailer from "nodemailer";
 import "dotenv/config";
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
-
+  host: process.env.MAIL_HOST,
+  port: parseInt(process.env.MAIL_PORT),
+  secure: true, // true for port 465
   auth: {
     user: process.env.MAIL_USER,
     pass: process.env.MAIL_PASS,
   },
+  // Added these two lines to help with Render's network:
+  connectionTimeout: 10000, // Wait 10s before timing out
+  debug: true, // Log details to Render console
 });
 
-export const sendOtpMail = async ({
-  email,
-  otp,
-  name,
-}) => {
+export const sendOtpMail = async ({ email, otp, name }) => {
   await transporter.sendMail({
     from: `"Lunchbox Legends" <${process.env.MAIL_USER}>`,
 
