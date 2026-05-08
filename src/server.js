@@ -31,6 +31,7 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => {
+// Change this line
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });

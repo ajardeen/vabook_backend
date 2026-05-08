@@ -2,23 +2,17 @@ import nodemailer from "nodemailer";
 import "dotenv/config";
 
 const transporter = nodemailer.createTransport({
-  host: process.env.MAIL_HOST,
-  port: Number(process.env.MAIL_PORT), // Should be 587
-  secure: false, // You requested no secure (STARTTLS)
+  host: process.env.MAIL_HOST, // smtp.gmail.com
+  port: 465,                   // Change from 587 to 465
+  secure: true,                // Use true for 465, false for 587
   auth: {
     user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS,
+    pass: process.env.MAIL_PASS, // Ensure this is a 16-character App Password
   },
-  tls: {
-    // This helps prevent timeouts on cloud networks
-    rejectUnauthorized: false,
-    minVersion: "TLSv1.2"
-  },
-  connectionTimeout: 10000, 
-  debug: true,
-  logger: true 
+  // Keep these for cloud stability
+  connectionTimeout: 20000, 
+  greetingTimeout: 20000,
 });
-
 export const sendOtpMail = async ({ email, otp, name }) => {
   try {
     await transporter.sendMail({
