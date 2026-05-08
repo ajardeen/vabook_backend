@@ -5,7 +5,7 @@ import { sendOtpMail } from "./src/utils/sendOtpMail.js";
 // console.log(process.env.MAIL_USER); 
 
 await sendOtpMail({
-  email: "3rdmysteryunknown@gmail.com",
+  email: "mnazar87540@gmail.com",
   otp: "12345",
   name: "Test User",
 });

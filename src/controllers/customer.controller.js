@@ -24,14 +24,9 @@ const getIdsFromHeaders = (req, res) => {
 };
 
 // REGISTER
-export const registerCustomer = async (
-  req,
-  res,
-  next
-) => {
+export const registerCustomer = async (req, res, next) => {
   try {
-    const { error } =
-      registerCustomerSchema.validate(req.body);
+    const { error } = registerCustomerSchema.validate(req.body);
 
     if (error) {
       return res.status(400).json({
@@ -41,24 +36,12 @@ export const registerCustomer = async (
     }
 
     const context = getIdsFromHeaders(req, res);
-
     if (context.error) return;
 
-    const { organizationId, branchId } =
-      context;
+    const { organizationId, branchId } = context;
+    const { fullName, phone, email, password } = req.body;
 
-    const {
-      fullName,
-      phone,
-      email,
-      password,
-    } = req.body;
-
-    const existing =
-      await Customer.findOne({
-        email,
-        organizationId,
-      });
+    const existing = await Customer.findOne({ email, organizationId });
 
     if (existing) {
       return res.status(400).json({
@@ -67,59 +50,42 @@ export const registerCustomer = async (
       });
     }
 
-    const hashed =
-      await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
+    const otp = generateOtp();
+    // local server it works
+    // ⚠️ Email disabled — free hosting blocks SMTP outbound
+    // await sendOtpMail({ email, otp, name: fullName });
 
- const otp = generateOtp();
-
-await sendOtpMail({
-  email,
-  otp,
-  name: fullName,
-});
-
-const customer = await Customer.create({
-  fullName,
-  phone,
-  email,
-  password: hashed,
-
-  organizationId,
-  branchId,
-
-  otpCode: otp,
-
-  otpExpireAt:
-    new Date(Date.now() + 5 * 60 * 1000),
-});
+    const customer = await Customer.create({
+      fullName,
+      phone,
+      email,
+      password: hashed,
+      organizationId,
+      branchId,
+      otpCode: otp,
+      otpExpireAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
 
     res.status(201).json({
       success: true,
-
-      message:
-        "OTP sent to your email",
-
+      message: "OTP sent to your email (demo: email disabled on free hosting)",
       data: {
         userId: customer._id,
         email: customer.email,
+        otp, // ⚠️ Remove this in production
       },
     });
   } catch (err) {
     console.log(err.message);
-    
     next(err);
   }
 };
 
 // LOGIN
-export const loginCustomer = async (
-  req,
-  res,
-  next
-) => {
+export const loginCustomer = async (req, res, next) => {
   try {
-    const { error } =
-      loginCustomerSchema.validate(req.body);
+    const { error } = loginCustomerSchema.validate(req.body);
 
     if (error) {
       return res.status(400).json({
@@ -129,20 +95,12 @@ export const loginCustomer = async (
     }
 
     const context = getIdsFromHeaders(req, res);
-
     if (context.error) return;
 
-    const { organizationId, branchId } =
-      context;
-
+    const { organizationId, branchId } = context;
     const { email, password } = req.body;
 
-    const customer =
-      await Customer.findOne({
-        organizationId,
-        branchId,
-        email,
-      });
+    const customer = await Customer.findOne({ organizationId, branchId, email });
 
     if (!customer) {
       return res.status(404).json({
@@ -151,11 +109,7 @@ export const loginCustomer = async (
       });
     }
 
-    const valid =
-      await bcrypt.compare(
-        password,
-        customer.password
-      );
+    const valid = await bcrypt.compare(password, customer.password);
 
     if (!valid) {
       return res.status(401).json({
@@ -167,33 +121,26 @@ export const loginCustomer = async (
     const otp = generateOtp();
 
     customer.otpCode = otp;
-
-    customer.otpExpireAt =
-      new Date(Date.now() + 5 * 60 * 1000);
-
+    customer.otpExpireAt = new Date(Date.now() + 5 * 60 * 1000);
     await customer.save();
 
-    await sendOtpMail({
-      email,
-      otp,
-      name: customer.fullName,
-    });
+    // ⚠️ Email disabled — free hosting blocks SMTP outbound
+    // await sendOtpMail({ email, otp, name: customer.fullName });
 
     res.json({
       success: true,
-
-      message:
-        "OTP sent to your email",
-
+      message: "OTP sent to your email (demo: email disabled on free hosting)",
       data: {
         userId: customer._id,
         email: customer.email,
+        otp, // ⚠️ Remove this in production
       },
     });
   } catch (err) {
     next(err);
   }
 };
+
 
 export const verifyCustomerOtp = async (
   req,
