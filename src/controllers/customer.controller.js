@@ -8,6 +8,7 @@ import {
 } from "../validations/customer.validation.js";
 import {generateOtp} from "../utils/generateOtp.js";
 import { sendOtpMail } from "../utils/sendOtpMail.js";
+import { generateToken } from "../utils/jwt.js";
 
 const getIdsFromHeaders = (req, res) => {
   const organizationId = req.headers["x-organization-id"];
@@ -195,20 +196,7 @@ export const verifyCustomerOtp = async (
 
     await customer.save();
 
-    const token = jwt.sign(
-      {
-        id: customer._id,
-        organizationId:
-          customer.organizationId,
-        branchId: customer.branchId,
-      },
-
-      process.env.JWT_SECRET,
-
-      {
-        expiresIn: "7d",
-      }
-    );
+  const token = generateToken(customer);
 
     res.json({
       success: true,

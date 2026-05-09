@@ -6,13 +6,15 @@ import {
   updateMenu,
   deleteMenu,
 } from "../controllers/menu.controller.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+import allowRoles from "../middleware/roleMiddleware.js";
 
 const router = Router();
 
-router.post("/", createMenu);
-router.get("/", getMenus);
-router.get("/:id", getMenuById);
-router.put("/:id", updateMenu);
-router.delete("/:id", deleteMenu);
+router.post("/", authMiddleware, allowRoles("admin"), createMenu);
+router.get("/", authMiddleware, allowRoles("admin"), getMenus);
+router.get("/:id", authMiddleware, allowRoles("admin"), getMenuById);
+router.put("/:id", authMiddleware, allowRoles("admin"), updateMenu);
+router.delete("/:id", authMiddleware, allowRoles("admin"), deleteMenu);
 
 export default router;

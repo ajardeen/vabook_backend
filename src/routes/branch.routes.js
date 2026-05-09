@@ -4,15 +4,17 @@ import {
   getBranches,
   getBranchById,
   updateBranch,
-  deleteBranch
+  deleteBranch,
 } from "../controllers/branch.controller.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+import allowRoles from "../middleware/roleMiddleware.js";
 
 const router = Router();
 
 router.post("/", createBranch);
 router.get("/", getBranches);
 router.get("/:id", getBranchById);
-router.put("/:id", updateBranch);
-router.delete("/:id", deleteBranch);
+router.put("/:id", authMiddleware, allowRoles("admin"), updateBranch);
+router.delete("/:id", authMiddleware, allowRoles("admin"), deleteBranch);
 
 export default router;
